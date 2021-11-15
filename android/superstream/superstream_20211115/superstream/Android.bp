@@ -1,0 +1,23 @@
+cc_binary {
+    name: "superstream",
+    //defaults: ["surfaceflinger_defaults"],
+    //init_rc: ["superstream.rc"],
+    srcs: [
+        "SuperStream.cpp",
+        "ISuperStream.cpp",
+        "main_SuperStream.cpp"
+    ],
+    cflags: [
+        "-DLOG_TAG=\"SuperStream\"",
+        "-fvisibility=hidden",
+        "-Werror=format",
+    ],
+    shared_libs: [
+        "libbinder",
+        "libcutils",
+        "libhidlbase",
+        "libhidltransport",
+        "liblog",
+        "libutils",
+    ],
+}
