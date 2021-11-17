@@ -1,0 +1,32 @@
+cc_binary {
+    name: "superstream",
+    //defaults: ["surfaceflinger_defaults"],
+    //init_rc: ["superstream.rc"],
+    srcs: [
+        "SuperStream.cpp",
+        "ISuperStream.cpp",
+        "VideoStream.cpp",
+        "EglWindow.cpp",
+        "FrameOutput.cpp",
+        "Program.cpp",
+        "main_SuperStream.cpp"
+    ],
+    cflags: [
+        "-DLOG_TAG=\"SuperStream\"",
+        "-fvisibility=hidden",
+        "-Werror=format",
+    ],
+    shared_libs: [
+        "libbase",
+        "libbinder",
+        "libcutils",
+        "libhidlbase",
+        "libhidltransport",
+        "liblog",
+        "libui",
+        "libutils",
+        "libgui",
+        "libEGL",
+        "libGLESv2",
+    ],
+}
