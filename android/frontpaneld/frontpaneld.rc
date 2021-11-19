@@ -1,0 +1,4 @@
+service usbd /system/bin/frontpaneld
+    class late_start
+    user system
+    group input uhid system

@@ -1,0 +1,20 @@
+cc_binary {
+    name: "frontpaneld",
+    init_rc: ["frontpaneld.rc"],
+    srcs: ["frontpaneld.cpp"],
+    cflags: [
+        "-Werror",
+        "-Wno-unused-parameter",
+        "-Wno-unused-const-variable",
+    ],
+    shared_libs: [
+        "libbase",
+        "liblog",
+        "libutils",
+        "libcutils",
+    ],
+    //required: [
+    //    "adc-keys.kl",
+    //    "gpio_keys_polled.kl"
+    //]
+}
