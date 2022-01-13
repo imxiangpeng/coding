@@ -1,0 +1,13 @@
+version: '2'
+services:
+  ubuntu_18.04:
+    image: ialexmeng/browser.server:browser.ubuntu.18.04.v3
+    container_name: %HOSTNAME%_%USER%
+    user: %UID%:%GID%
+    privileged: true
+    volumes:
+      - $PWD/rootfs/home/%USER%:/home/%USER%
+      - $PWD/rootfs/etc/passwd:/etc/passwd
+      - $PWD/rootfs/etc/group:/etc/group
+      - $PWD/rootfs/etc/localtime:/etc/localtime
+      - %WORKSPACE%:/workspace
