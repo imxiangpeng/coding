@@ -1,0 +1,7 @@
+[{
+	"__id__":	0,
+	"minute":	30,
+	"hour":	14,
+	"week":	[1, 0, 0, 0, 4, 0, 0],
+	"cmd":	"ls -l /workspace"
+}]

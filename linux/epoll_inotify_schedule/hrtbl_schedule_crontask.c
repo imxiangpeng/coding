@@ -89,6 +89,8 @@ static void _reload(const char *table) {
             printf("%d %d * * * ls -l\n", t->minute, t->hour);
         }
     }
+    
+    j2stable_deinit(tbl);
 }
 // link test
 struct hrtbl_schedule_module HRTBL_TRIGGER_MODULE_SYM = {
