@@ -161,8 +161,7 @@ static void _inotify_j2stbl_monitor_task_routin(int fd) {
         printf("mask:0x%X, len:%d, name:%s\n", e->mask, e->len, e->name);
         char* sub = strstr(e->name, ".json");
         if (!sub || sub[strlen(".json")] != '\0' ) {
-          printf("not valid json:%s\n", e->name);
-          _priv.running = 0;
+          // _priv.running = 0; // only for test memory leak
           continue;
         }
         if (e->mask & (IN_ATTRIB | IN_MODIFY)) {
@@ -213,9 +212,6 @@ int main(int argc, const char **argv) {
         _priv.epoll_fd = -1;
         return -1;
     }
-    
-    printf("epoll:%d, fd:%d, J2STBL_BASE_DB_PATH:%s\n", _priv.epoll_fd, fd, J2STBL_BASE_DB_PATH);
-
     memset((void *)&ev, 0, sizeof(ev));
     ev.events = EPOLLIN;
     ev.data.fd = fd;

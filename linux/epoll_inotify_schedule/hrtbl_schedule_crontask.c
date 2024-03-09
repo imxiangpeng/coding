@@ -18,6 +18,17 @@
 
 #define SUPPORT_NUM_ARRAY 1
 
+#ifndef TEMP_FAILURE_RETRY
+#define TEMP_FAILURE_RETRY(exp)                \
+    ({                                         \
+        typeof(exp) _rc;                       \
+        do {                                   \
+            _rc = (exp);                       \
+        } while (_rc == -1 && errno == EINTR); \
+        _rc;                                   \
+    })
+#endif
+
 // 获取元素 ele 在结构体中偏移量
 #define _J2SOBJECT_CRONTASK_DATA_OFFSET(ele) \
     offsetof(struct j2sobject_crontask, ele)
@@ -66,6 +77,24 @@ static int j2sobject_crontask_ctor(struct j2sobject *obj) {
     return 0;
 }
 
+static ssize_t _write_file_fd(int fd, char *data, size_t size) {
+    ssize_t left = size;
+    char *ptr = data;
+
+    if (fd < 0 || !data || size == 0) return -1;
+
+    while (left > 0) {
+        ssize_t n = TEMP_FAILURE_RETRY(write(fd, ptr, left));
+        if (n == -1) {
+            close(fd);
+            return size - left;
+        }
+        ptr += n;
+        left -= n;
+    }
+
+    return size;
+}
 
 static void _reload(const char *table) {
 
