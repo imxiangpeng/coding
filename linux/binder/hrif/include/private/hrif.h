@@ -14,14 +14,10 @@
 #ifndef _HRIF_H_
 #define _HRIF_H_
 
-#include "libubus.h"
+#include <stdint.h>
 
-enum {
-    HRIF_METHOD_UNSPEC = 0,
-    HRIF_METHOD_WAN_SIZE,
-};
-int hrif_init(void);
+// int hrif_init(void);
 
-int hrif_request(struct blob_attr *msg, ubus_data_handler_t cb, void *priv);
-
+// it's not good method, which leading memory copy ...
+int hrif_transact(int method, void *data, uint32_t dsize, void *result, uint32_t *rsize);
 #endif  //_HRIF_H_

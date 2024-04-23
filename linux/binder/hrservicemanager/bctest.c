@@ -54,7 +54,7 @@ int svcmgr_publish(struct binder_state *bs, uint32_t target, const char *name, v
     return status;
 }
 
-int svcmgr_transact(struct binder_state *bs, uint32_t target, uint32_t code)
+int svcmgr_transact(struct binder_state *bs, const char* name, uint32_t target, uint32_t code)
 {
     int status;
     unsigned iodata[512/4];
@@ -62,7 +62,7 @@ int svcmgr_transact(struct binder_state *bs, uint32_t target, uint32_t code)
 
     bio_init(&msg, iodata, sizeof(iodata), 4);
     bio_put_uint32(&msg, 0);  // strict mode header
-    bio_put_string16_x(&msg, "hrifd");
+    bio_put_string16_x(&msg, name);
     // bio_put_ref(&msg, target);
 
     if (binder_call(bs, &msg, &reply, target, code))
@@ -126,7 +126,7 @@ int main(int argc, char **argv)
             printf("try call transact %s on %s\n", argv[2], argv[1]);
             handle = svcmgr_lookup(bs, svcmgr, argv[1]);
             fprintf(stderr,"lookup(%s) = %x\n", argv[1], handle);
-            svcmgr_transact(bs, handle, atoi(argv[2]));
+            svcmgr_transact(bs, argv[1], handle, atoi(argv[2]));
             argc--;
             argv++;
             argc--;

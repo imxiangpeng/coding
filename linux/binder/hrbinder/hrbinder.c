@@ -3,6 +3,8 @@
 
 #define LOG_TAG "Binder"
 
+#include <unistd.h>
+#include "linux/android/binder.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
@@ -10,7 +12,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
-#include <unistd.h>
 
 #define ALOGE(x...) fprintf(stderr, "Binder: " x)
 
@@ -81,11 +82,6 @@ const char *cmd_name(uint32_t cmd)
 #define hexdump(a,b) do{} while (0)
 #define binder_dump_txn(txn)  do{} while (0)
 #endif
-
-#define BIO_F_SHARED    0x01  /* needs to be buffer freed */
-#define BIO_F_OVERFLOW  0x02  /* ran out of space */
-#define BIO_F_IOERROR   0x04
-#define BIO_F_MALLOCED  0x08  /* needs to be free()'d */
 
 struct binder_state
 {
@@ -248,7 +244,7 @@ int binder_parse(struct binder_state *bs, struct binder_io *bio,
             }
             binder_dump_txn(txn);
             if (func) {
-                unsigned rdata[256/4];
+                unsigned rdata[256/4 * 10];
                 struct binder_io msg;
                 struct binder_io reply;
                 int res;
@@ -315,6 +311,22 @@ void binder_release(struct binder_state *bs, uint32_t target)
 {
     uint32_t cmd[2];
     cmd[0] = BC_RELEASE;
+    cmd[1] = target;
+    binder_write(bs, cmd, sizeof(cmd));
+}
+
+void binder_incweakref(struct binder_state *bs, uint32_t target)
+{
+    uint32_t cmd[2];
+    cmd[0] = BC_INCREFS;
+    cmd[1] = target;
+    binder_write(bs, cmd, sizeof(cmd));
+}
+
+void binder_decweakref(struct binder_state *bs, uint32_t target)
+{
+    uint32_t cmd[2];
+    cmd[0] = BC_DECREFS;
     cmd[1] = target;
     binder_write(bs, cmd, sizeof(cmd));
 }
@@ -456,7 +468,7 @@ void bio_init(struct binder_io *bio, void *data,
     bio->flags = 0;
 }
 
-static void *bio_alloc(struct binder_io *bio, size_t size)
+void *bio_alloc(struct binder_io *bio, size_t size)
 {
     size = (size + 3) & (~3);
     if (size > bio->data_avail) {
@@ -598,7 +610,7 @@ void bio_put_string16_x(struct binder_io *bio, const char *_str)
     *ptr++ = 0;
 }
 
-static void *bio_get(struct binder_io *bio, size_t size)
+void *bio_get(struct binder_io *bio, size_t size)
 {
     size = (size + 3) & (~3);
 

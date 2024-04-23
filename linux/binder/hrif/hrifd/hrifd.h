@@ -14,13 +14,18 @@
 #ifndef _HRIFD_H_
 #define _HRIFD_H_
 
+#include <stdint.h>
 #include "hrbinder.h"
 
-typedef int (*hrifd_on_transact)(struct binder_state *bs,
-                               struct binder_transaction_data *txn,
-                               struct binder_io *msg,
-                               struct binder_io *reply);
+// typedef int (*hrifd_on_transact)(struct binder_state *bs,
+//                               struct binder_transaction_data *txn,
+//                               struct binder_io *msg,
+//                               struct binder_io *reply);
 
+typedef int (*hrifd_on_transact)(uint32_t code,
+                                 struct binder_io *msg,
+                                 struct binder_io *reply);
 int hrifd_publish(const char *name, hrifd_on_transact on_transact);
 
+int hrifd_network_init();
 #endif  //_HRIFD_H_
