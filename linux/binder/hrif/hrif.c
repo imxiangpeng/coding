@@ -83,7 +83,6 @@ int hrif_init(void) {
 // 4 - 7bits: result payload size
 // 8 - -    : result payload data
 int hrif_transact(int method, void *data, uint32_t dsize, void *result, uint32_t *rsize) {
-    // int hrif_transact(int method, struct binder_io *msg1, struct binder_io *reply1) {
     int id = -1;
     int status;
     unsigned iodata[512 / 4] = {0};
@@ -93,7 +92,8 @@ int hrif_transact(int method, void *data, uint32_t dsize, void *result, uint32_t
     memset((void *)&reply, 0, sizeof(reply));
 
     bio_init(&msg, iodata, sizeof(iodata), 4);
-    bio_put_uint32(&msg, 0);  // strict mode header
+    // not use strict mode header in our self service
+    // bio_put_uint32(&msg, 0);  // strict mode header
 
     if (!_bs) {
         _init();

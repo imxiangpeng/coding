@@ -244,7 +244,9 @@ int binder_parse(struct binder_state *bs, struct binder_io *bio,
             }
             binder_dump_txn(txn);
             if (func) {
-                unsigned rdata[256/4 * 10];
+                // mxp, 20240424, default buffer is limited,
+                // you should use share memory when data is large!
+                unsigned rdata[256/4 * 4] = {0};
                 struct binder_io msg;
                 struct binder_io reply;
                 int res;
