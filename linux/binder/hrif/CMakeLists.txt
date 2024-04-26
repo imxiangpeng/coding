@@ -14,8 +14,12 @@ INCLUDE_DIRECTORIES($ENV{HI_HISI_BASIC_DIR}/include $ENV{HI_HISI_BASIC_DIR}/linu
 
 link_directories($ENV{HI_INSTALL_ROOTFS_DIR}/usr/lib)
 
+ADD_DEFINITIONS(-Wall -Wextra -Werror)
+
 ADD_EXECUTABLE(hrifd hrifd/hrifd.c
-               hrifd/hrifd_network.c)
+            hrifd/hrifd_system.c
+            hrifd/hrifd_network.c
+            hrifd/hrifd_wireless.c)
 
 TARGET_LINK_LIBRARIES(hrifd hr_base)
 TARGET_LINK_LIBRARIES(hrifd hrbinder)
@@ -28,6 +32,7 @@ SET_TARGET_PROPERTIES(hrifd PROPERTIES LINK_FLAGS "-Wl,-rpath-link,$ENV{HI_INSTA
 
 # sample code, default do not install.
 INSTALL(TARGETS hrifd DESTINATION $ENV{HI_INSTALL_ROOTFS_DIR}/usr/bin)
+INSTALL(FILES hrsvc.d/hrifd.json DESTINATION $ENV{HI_INSTALL_ROOTFS_DIR}/etc/hrsvc.d)
 
 
 SET(SOURCES hrif_network.c hrif_system.c hrif_wireless.c hrif_update.c hrif_easymesh.c hrif_diagnostics.c hrif_table.c)

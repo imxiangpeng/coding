@@ -76,7 +76,9 @@ int hrif_network_get_wan(int index, hrif_wan_t *wan) {
 int hrif_network_wan_get_proto(int index, hrif_protocol_e *proto) {
     if (!proto) return -1;
     *proto = hrif_transact(HRIF_TRANSACT_CODE_NETWORK_WAN_GET_PROTO, (void *)&index, sizeof(index), NULL, NULL);
+    return 0;
 }
+
 int hrif_network_wan_set_proto(int index, hrif_protocol_e proto) {
     int data[2] = {index, proto};
     return hrif_transact(HRIF_TRANSACT_CODE_NETWORK_WAN_SET_PROTO, (void *)&data, sizeof(data), NULL, NULL);
@@ -127,6 +129,10 @@ int hrif_network_wan_set_pppoe(int index, hrif_pppoe_t *pppoe) {
 
 int hrif_network_wan_commit(int index) {
     return hrif_transact(HRIF_TRANSACT_CODE_NETWORK_WAN_COMMIT, (void *)&index, sizeof(index), NULL, NULL);
+}
+
+int hrif_network_wan_discard(int index) {
+    return hrif_transact(HRIF_TRANSACT_CODE_NETWORK_WAN_DISCARD, (void *)&index, sizeof(index), NULL, NULL);
 }
 
 int hrif_network_wan_get_status(int index, hrif_wan_status_t *status) {
@@ -218,13 +224,16 @@ int hrif_network_lanhost_limitspeed_set(hrif_limitspeed_t *limit) {
 }
 
 int hrif_network_limit_get(hrif_limit_t *limit) {
+    (void)limit;
     return 0;
 }
 // we should convert link to continue memory block
 int hrif_network_limit_set(hrif_limit_t *limit) {
+    (void)limit;
     return 0;
 }
 int hrif_network_limit_del(hrif_limit_t *limit) {
+    (void)limit;
     return 0;
 }
 
@@ -240,6 +249,8 @@ int hrif_network_port_forwarding_del(char *port_forwarding_indexs) {
 }
 
 int hrif_network_port_forwarding_array(hrif_port_forwarding_t **list, uint32_t *size) {
+    (void)list;
+    (void)size;
     return 0;
 }
 
@@ -251,41 +262,84 @@ int hrif_network_dmz_get(hrif_dmz_t *dmz) {
 
 int hrif_network_dmz_set(hrif_dmz_t *dmz) {
     if (!dmz) return -1;
-    return hrif_transact(HRIF_TRANSACT_CODE_NETWORK_DHCP_SET, (void *)dmz, sizeof(hrif_dmz_t), NULL, NULL);
-}
-
-int hrif_network_iptv_set(hrif_iptv_t *iptv) {
-    return 0;
+    return hrif_transact(HRIF_TRANSACT_CODE_NETWORK_DMZ_SET, (void *)dmz, sizeof(hrif_dmz_t), NULL, NULL);
 }
 
 int hrif_network_iptv_get(hrif_iptv_t *iptv) {
-    return 0;
+    uint32_t len = sizeof(hrif_iptv_t);
+    if (!iptv) return -1;
+    return hrif_transact(HRIF_TRANSACT_CODE_NETWORK_IPTV_GET, NULL, 0, (void *)iptv, &len);
 }
 
+int hrif_network_iptv_set(hrif_iptv_t *iptv) {
+    if (!iptv) return -1;
+    return hrif_transact(HRIF_TRANSACT_CODE_NETWORK_IPTV_SET, (void *)iptv, sizeof(hrif_iptv_t), NULL, NULL);
+}
+
+int hrif_network_dos_get(hrif_dos_t *data) {
+    uint32_t len = sizeof(hrif_dos_t);
+    if (!data) return -1;
+    return hrif_transact(HRIF_TRANSACT_CODE_NETWORK_DOS_GET, NULL, 0, (void *)data, &len);
+}
 int hrif_network_dos_set(hrif_dos_t *data) {
-    return 0;
+    if (!data) return -1;
+    return hrif_transact(HRIF_TRANSACT_CODE_NETWORK_DOS_SET, (void *)data, sizeof(hrif_dos_t), NULL, NULL);
+}
+
+int hrif_network_address_filter_get(hrif_address_filter_t *data) {
+    uint32_t len = sizeof(hrif_address_filter_t);
+    if (!data) return -1;
+    return hrif_transact(HRIF_TRANSACT_CODE_NETWORK_ADDRESS_FILTER_GET, NULL, 0, (void *)data, &len);
 }
 
 int hrif_network_address_filter_set(hrif_address_filter_t *data) {
+    if (!data) return -1;
+    return hrif_transact(HRIF_TRANSACT_CODE_NETWORK_ADDRESS_FILTER_SET, (void *)data, sizeof(hrif_address_filter_t), NULL, NULL);
+}
+
+int hrif_network_port_filter_get(hrif_port_filter_t *data) {
+    uint32_t len = sizeof(hrif_port_filter_t);
+    if (!data) return -1;
+    return hrif_transact(HRIF_TRANSACT_CODE_NETWORK_PORT_FILTER_GET, NULL, 0, (void *)data, &len);
     return 0;
 }
 
 int hrif_network_port_filter_set(hrif_port_filter_t *data) {
+    if (!data) return -1;
+    return hrif_transact(HRIF_TRANSACT_CODE_NETWORK_PORT_FILTER_SET, (void *)data, sizeof(hrif_port_filter_t), NULL, NULL);
     return 0;
 }
 
+int hrif_network_url_filter_get(hrif_url_filter_t *data) {
+    uint32_t len = sizeof(hrif_url_filter_t);
+    if (!data) return -1;
+    return hrif_transact(HRIF_TRANSACT_CODE_NETWORK_URL_FILTER_GET, NULL, 0, (void *)data, &len);
+    return 0;
+}
 int hrif_network_url_filter_set(hrif_url_filter_t *data) {
+    if (!data) return -1;
+    return hrif_transact(HRIF_TRANSACT_CODE_NETWORK_URL_FILTER_SET, (void *)data, sizeof(hrif_url_filter_t), NULL, NULL);
+}
+
+int hrif_network_filter_mode_get(hrif_filter_mode_t *data) {
+    uint32_t len = sizeof(hrif_filter_mode_t);
+    if (!data) return -1;
+    return hrif_transact(HRIF_TRANSACT_CODE_NETWORK_FILTERMODE_GET, NULL, 0, (void *)data, &len);
+}
+int hrif_network_filter_mode_set(hrif_filter_mode_t *data) {
+    if (!data) return -1;
+    return hrif_transact(HRIF_TRANSACT_CODE_NETWORK_FILTERMODE_SET, (void *)data, sizeof(hrif_filter_mode_t), NULL, NULL);
     return 0;
 }
 
-int hrif_network_filter_mode_set(hrif_filter_mode_t *data) {
-    return 0;
+int hrif_network_qos_get(hrif_qos_t *data) {
+    uint32_t len = sizeof(hrif_qos_t);
+    if (!data) return -1;
+    return hrif_transact(HRIF_TRANSACT_CODE_NETWORK_QOS_GET, NULL, 0, (void *)data, &len);
 }
 
 int hrif_network_qos_set(hrif_qos_t *data) {
-    if (!data) {
-        return -1;
-    }
-
+    if (!data) return -1;
+    return hrif_transact(HRIF_TRANSACT_CODE_NETWORK_QOS_SET, (void *)data, sizeof(hrif_qos_t), NULL, NULL);
     return 0;
 }

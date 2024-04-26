@@ -16,8 +16,6 @@
 
 #include <stdint.h>
 
-// int hrif_init(void);
-
 // it's not good method, which leading memory copy ...
 int hrif_transact(int method, void *data, uint32_t dsize, void *result, uint32_t *rsize);
 #endif  //_HRIF_H_

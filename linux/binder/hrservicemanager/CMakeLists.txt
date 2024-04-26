@@ -6,14 +6,15 @@ INCLUDE_DIRECTORIES($ENV{HI_HISI_BASIC_DIR}/include $ENV{HI_HISI_BASIC_DIR}/linu
 
 link_directories($ENV{HI_INSTALL_ROOTFS_DIR}/usr/lib)
 
-ADD_EXECUTABLE(hrservicemanager service_manager.c)
+ADD_EXECUTABLE(hrservicemanager hrservicemanager.c)
 TARGET_LINK_LIBRARIES(hrservicemanager hrbinder)
 #SET_TARGET_PROPERTIES(hrmgt PROPERTIES LINK_FLAGS "-Wl,-rpath-link,$ENV{HI_INSTALL_ROOTFS_DIR}/usr/lib")
 
 # sample code, default do not install.
-INSTALL(TARGETS hrservicemanager DESTINATION $ENV{HI_INSTALL_ROOTFS_DIR}/usr/bin)
+INSTALL(TARGETS hrservicemanager DESTINATION $ENV{HI_INSTALL_ROOTFS_DIR}/usr/sbin)
+INSTALL(FILES hrsvc.d/hrservicemanager.json DESTINATION $ENV{HI_INSTALL_ROOTFS_DIR}/etc/hrsvc.d)
 
 
-ADD_EXECUTABLE(bctest bctest.c)
-TARGET_LINK_LIBRARIES(bctest hrbinder)
+#ADD_EXECUTABLE(bctest bctest.c)
+#TARGET_LINK_LIBRARIES(bctest hrbinder)
 

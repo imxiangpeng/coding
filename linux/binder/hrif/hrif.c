@@ -23,7 +23,7 @@
 static struct binder_state *_bs = NULL;
 
 static struct _svc {
-    int id;
+    uint32_t id;
     const char *name;
     uint32_t target;
 } _svcs[] = {
@@ -70,7 +70,7 @@ static uint32_t _lookup(const char *name) {
 
 static int _init(void) {
     if (!_bs) {
-        _bs = binder_open("/dev/binderfs/binder", 128 * 1024);
+        _bs = binder_open("/dev/binderfs/hrbinder", 128 * 1024);
     }
 
     return _bs ? 0 : -1;
@@ -83,7 +83,7 @@ int hrif_init(void) {
 // 4 - 7bits: result payload size
 // 8 - -    : result payload data
 int hrif_transact(int method, void *data, uint32_t dsize, void *result, uint32_t *rsize) {
-    int id = -1;
+    uint32_t id = (uint32_t)-1;
     int status;
     unsigned iodata[512 / 4] = {0};
     struct binder_io msg, reply;
@@ -103,7 +103,7 @@ int hrif_transact(int method, void *data, uint32_t dsize, void *result, uint32_t
     id = (method & HRIF_TRANSACT_CODE_CATEGORY_MASK) >> 8;
 
     if (id > sizeof(_svcs) / sizeof(_svcs[0]) - 1 || (method & HRIF_TRANSACT_CODE_CATEGORY_MASK) != _svcs[id].id) {
-        printf("invalid method:0x%X ... not support ...\n", method);
+        printf("invalid method:0x%X ... not support ... id:%d\n", method, id);
         return -1;
     }
 
@@ -118,7 +118,7 @@ int hrif_transact(int method, void *data, uint32_t dsize, void *result, uint32_t
 #endif
     }
 
-    if (id < 0 || _svcs[id].target == 0) {
+    if (_svcs[id].target == 0) {
         printf("can not found valid service: id:%d, target:%d\n", id, _svcs[id].target);
         return -1;
     }
@@ -168,3 +168,4 @@ int hrif_transact(int method, void *data, uint32_t dsize, void *result, uint32_t
 
     return status;
 }
+
