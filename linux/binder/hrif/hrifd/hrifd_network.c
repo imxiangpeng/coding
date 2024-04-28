@@ -27,6 +27,7 @@
 #include "private/hrif_transact_code.h"
 
 #include "hr_log.h"
+#include "sys/types.h"
 
 #define SVC_NAME "hrifd.network"
 
@@ -138,18 +139,21 @@ static int _hrif_network_wan_array(struct binder_io *msg, struct binder_io *repl
     wan = (hrif_wan_t *)shmat(sid, 0, 0);
     if (wan == (void *)-1) {
         printf("can not access memory ...\n");
+        shmctl(sid, IPC_RMID, NULL);
         return -1;
     }
 
     size = data->max_size;
 
     if (0 != hrif_network_wan_array(wan, &size)) {
+        shmdt(wan);
+        shmctl(sid, IPC_RMID, NULL);
         return -1;
     }
 
     bio_put_uint32(reply, size);
 
-    shmdt(data);
+    shmdt(wan);
     shmctl(sid, IPC_RMID, NULL);
 
     return 0;
@@ -258,6 +262,7 @@ static int _hrif_network_lanhost_array(struct binder_io *msg, struct binder_io *
     lh = (hrif_lanhost_t *)shmat(sid, 0, 0);
     if (lh == (void *)-1) {
         printf("can not access memory ...\n");
+        shmctl(sid, IPC_RMID, NULL);
         return -1;
     }
 
@@ -265,12 +270,14 @@ static int _hrif_network_lanhost_array(struct binder_io *msg, struct binder_io *
 
     if (0 != hrif_network_lanhost_array(lh, &size)) {
         printf("%s(%d): can not get lanhost ....\n", __FUNCTION__, __LINE__);
+        shmdt(lh);
+        shmctl(sid, IPC_RMID, NULL);
         return -1;
     }
 
     bio_put_uint32(reply, size);
 
-    shmdt(data);
+    shmdt(lh);
     shmctl(sid, IPC_RMID, NULL);
 
     return 0;
@@ -287,23 +294,100 @@ static int _hrif_network_lanhost_online_size(struct binder_io *msg, struct binde
 HRIF_STRUCT_SET(hrif_limitspeed_t, hrif_network_lanhost_limitspeed_set)
 
 static int _hrif_network_limit_get(struct binder_io *msg, struct binder_io *reply) {
-    (void)msg;
-    (void)reply;
+    uint32_t payload_length = 0;
+    void *ptr = NULL;
+    // we should reinit memory
+    hrif_limit_t *lt = NULL;
+    uint32_t size = 0;
+
+    if (!msg || !reply) return -1;
+    hrif_limit_e mode = bio_get_uint32(msg);
+
+    int result = hrif_network_limit_get(mode, &lt, &size);
+    if (result != 0 || !lt) {
+        bio_put_uint32(reply, result);
+        return -1;
+    }
+
+    payload_length = sizeof(hrif_limit_t) * size;
+    // using our dynamic memory when it's large than reply default size
+    if (payload_length + 4 + 4 > reply->data_avail) {
+        // bio not use maxoffset, you should add it if you use it
+        ptr = realloc(lt, payload_length + 4 + 4);  // result + result size + payload
+        if (!ptr) {
+            bio_put_uint32(reply, -1);
+            return -1;
+        }
+
+        // skip result + payload length
+        memmove((void *)((char *)ptr + 4 + 4), ptr, payload_length);
+        // ptr will be freed auto in BR_TRANSACTION
+        bio_init_with_prealloced(reply, ptr, payload_length + 4 + 4, 0);
+    }
+    // must call to alloc memory
+    int *data = (int *)bio_alloc(reply, payload_length + 4 + 4);
+    if (!data) {
+        printf("not enough ..........\n");
+        return -1;
+    }
+    *data = 0;
+    *(data + 1) = payload_length;
+    // not using dynamic memory, we should copy it manual
+    if (!ptr) {
+        memcpy((void *)(data + 2), lt, payload_length);
+    }
+
     return 0;
 }
 
 static int _hrif_network_limit_set(struct binder_io *msg, struct binder_io *reply) {
-    (void)msg;
-    (void)reply;
+    struct _data {
+        key_t key;
+        hrif_limit_e mode;
+        size_t max_size;
+    };
+    int sid = -1;
+    hrif_limit_t *lt = NULL;
+
+    struct _data *data = (struct _data *)bio_alloc(msg, sizeof(struct _data));  // result + payload size + payload data
+    if (!data) {
+        if (msg->flags & BIO_F_OVERFLOW) {
+            HR_LOGE("buffer overflow ...\n");
+        }
+        return -1;
+    }
+
+    if (data->max_size > 0) {
+        sid = shmget(data->key, 0, 0);
+        if (sid < 0) {
+            return -1;
+        }
+        lt = (hrif_limit_t *)shmat(sid, 0, 0);
+        if (lt == (void *)-1) {
+            shmctl(sid, IPC_RMID, NULL);
+            printf("can not access memory ...\n");
+            return -1;
+        }
+    }
+
+    int result = hrif_network_limit_set(data->mode, lt, data->max_size);
+
+    bio_put_uint32(reply, result);
+
+    if (lt) {
+        shmdt(lt);
+        shmctl(sid, IPC_RMID, NULL);
+    }
+
     return 0;
 }
-
+#if 0
 static int _hrif_network_limit_del(struct binder_io *msg, struct binder_io *reply) {
     (void)msg;
     (void)reply;
     return 0;
 }
-
+#endif
 HRIF_STRUCT_SET(hrif_port_forwarding_t, hrif_network_port_forwarding_add)
 HRIF_STRUCT_SET(hrif_port_forwarding_t, hrif_network_port_forwarding_mod)
 
@@ -318,7 +402,51 @@ static int _hrif_network_port_forwarding_del(struct binder_io *msg, struct binde
 }
 
 static int _hrif_network_port_forwarding_array(struct binder_io *msg, struct binder_io *reply) {
+    uint32_t size = 0;
+    uint32_t payload_length = 0;
+    void *ptr = NULL;
     if (!msg || !reply) return -1;
+    hrif_port_forwarding_t *pf = NULL;
+    // we should reinit memory
+
+    if (0 != hrif_network_port_forwarding_array(&pf, &size)) {
+        bio_put_uint32(reply, -1);
+        return -1;
+    }
+    
+    if (size == 0) {
+        bio_put_uint32(reply, 0);
+        return 0;
+    }
+
+    payload_length = sizeof(hrif_port_forwarding_t) * size;
+    // using our dynamic memory when it's large than reply default size
+    if (payload_length + 4 + 4 > reply->data_avail) {
+        // bio not use maxoffset, you should add it if you use it
+        ptr = realloc(pf, payload_length + 4 + 4);  // result + result size + payload
+        if (!ptr) {
+            bio_put_uint32(reply, -1);
+            return -1;
+        }
+
+        // skip result + payload length
+        memmove((void *)((char *)ptr + 4 + 4), ptr, payload_length);
+        // ptr will be freed auto in BR_TRANSACTION
+        bio_init_with_prealloced(reply, ptr, payload_length + 4 + 4, 0);
+    }
+    // must call to alloc memory
+    int *data = (int *)bio_alloc(reply, payload_length + 4 + 4);
+    if (!data) {
+        printf("not enough ..........\n");
+        return -1;
+    }
+
+    *data = 0;                     // result
+    *(data + 1) = payload_length;  // payload size
+    // not using dynamic memory, we should copy it manual
+    if (!ptr) {
+        memcpy((void *)(data + 2), pf, payload_length);
+    }
 
     return 0;
 }
@@ -381,7 +509,7 @@ static struct {
     [HRIF_TRANSACT_CODE_NETWORK_LANHOST_LIMITSPEED_SET & HRIF_TRANSACT_CODE_ID_MASK]     = {HRIF_TRANSACT_CODE_NETWORK_LANHOST_LIMITSPEED_SET, _hrif_network_lanhost_limitspeed_set},
     [HRIF_TRANSACT_CODE_NETWORK_LIMIT_GET & HRIF_TRANSACT_CODE_ID_MASK]                  = {HRIF_TRANSACT_CODE_NETWORK_LIMIT_GET, _hrif_network_limit_get},
     [HRIF_TRANSACT_CODE_NETWORK_LIMIT_SET & HRIF_TRANSACT_CODE_ID_MASK]                  = {HRIF_TRANSACT_CODE_NETWORK_LIMIT_SET, _hrif_network_limit_set},
-    [HRIF_TRANSACT_CODE_NETWORK_LIMIT_DEL & HRIF_TRANSACT_CODE_ID_MASK]                  = {HRIF_TRANSACT_CODE_NETWORK_LIMIT_DEL, _hrif_network_limit_del},
+    [HRIF_TRANSACT_CODE_NETWORK_LIMIT_DEL & HRIF_TRANSACT_CODE_ID_MASK]                  = {HRIF_TRANSACT_CODE_NETWORK_LIMIT_DEL, NULL /*_hrif_network_limit_del*/},
     [HRIF_TRANSACT_CODE_NETWORK_PORT_FORWARDING_ADD & HRIF_TRANSACT_CODE_ID_MASK]        = {HRIF_TRANSACT_CODE_NETWORK_PORT_FORWARDING_ADD, _hrif_network_port_forwarding_add},
     [HRIF_TRANSACT_CODE_NETWORK_PORT_FORWARDING_MOD & HRIF_TRANSACT_CODE_ID_MASK]        = {HRIF_TRANSACT_CODE_NETWORK_PORT_FORWARDING_MOD, _hrif_network_port_forwarding_mod},
     [HRIF_TRANSACT_CODE_NETWORK_PORT_FORWARDING_DEL & HRIF_TRANSACT_CODE_ID_MASK]        = {HRIF_TRANSACT_CODE_NETWORK_PORT_FORWARDING_DEL, _hrif_network_port_forwarding_del},

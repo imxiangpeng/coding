@@ -91,7 +91,7 @@ int hrif_transact(int method, void *data, uint32_t dsize, void *result, uint32_t
     memset((void *)&msg, 0, sizeof(msg));
     memset((void *)&reply, 0, sizeof(reply));
 
-    bio_init(&msg, iodata, sizeof(iodata), 4);
+    bio_init(&msg, iodata, sizeof(iodata), 0);
     // not use strict mode header in our self service
     // bio_put_uint32(&msg, 0);  // strict mode header
 
@@ -119,11 +119,12 @@ int hrif_transact(int method, void *data, uint32_t dsize, void *result, uint32_t
     }
 
     if (_svcs[id].target == 0) {
-        printf("can not found valid service: id:%d, target:%d\n", id, _svcs[id].target);
+        // printf("can not found valid service: id:%d, target:%d\n", id, _svcs[id].target);
         return -1;
     }
 
     if (data && dsize > 0) {
+#if 1
         void *ptr = bio_alloc(&msg, dsize);
         if (!ptr) {
             if (msg.flags & BIO_F_OVERFLOW) {
@@ -133,6 +134,9 @@ int hrif_transact(int method, void *data, uint32_t dsize, void *result, uint32_t
             return -1;
         }
         memcpy(ptr, (void *)data, dsize);
+#else
+        bio_init_with_prealloced(&msg, data, dsize, 0);
+#endif
     }
     if (!result || rsize == 0) {
         // current not support one way, because binder_call limited
@@ -154,11 +158,12 @@ int hrif_transact(int method, void *data, uint32_t dsize, void *result, uint32_t
             binder_done(_bs, &msg, &reply);
             return -1;
         }
+
         *rsize = len;
+
         void *ptr = bio_get(&reply, len);
         if (!ptr) {
             binder_done(_bs, &msg, &reply);
-            printf("%s(%d): can not get result ...\n", __FUNCTION__, __LINE__);
             return -1;
         }
         memcpy(result, ptr, len);
@@ -169,3 +174,106 @@ int hrif_transact(int method, void *data, uint32_t dsize, void *result, uint32_t
     return status;
 }
 
+// 0 - 3bits: result code
+// 4 - 7bits: result payload size
+// 8 - -    : result payload data
+int hrif_transact2(int method, void *data, uint32_t dsize, void **result, uint32_t *rsize, hrif_transact_realloc realloc_fn) {
+    uint32_t id = (uint32_t)-1;
+    int status;
+    unsigned iodata[512 / 4] = {0};
+    struct binder_io msg, reply;
+
+    memset((void *)&msg, 0, sizeof(msg));
+    memset((void *)&reply, 0, sizeof(reply));
+
+    bio_init(&msg, iodata, sizeof(iodata), 0);
+    // not use strict mode header in our self service
+    // bio_put_uint32(&msg, 0);  // strict mode header
+
+    if (!_bs) {
+        _init();
+    }
+
+    // using fast api
+    id = (method & HRIF_TRANSACT_CODE_CATEGORY_MASK) >> 8;
+
+    if (id > sizeof(_svcs) / sizeof(_svcs[0]) - 1 || (method & HRIF_TRANSACT_CODE_CATEGORY_MASK) != _svcs[id].id) {
+        printf("invalid method:0x%X ... not support ... id:%d\n", method, id);
+        return -1;
+    }
+
+    if (_svcs[id].target == 0) {
+        _svcs[id].target = _lookup(_svcs[id].name);
+        printf("lookup(%d):%s -> 0x%X\n", id, _svcs[id].name, _svcs[id].target);
+#if 0
+        struct binder_death death;
+        death.func = (void *)_svc_death_cb;
+        death.ptr = _svcs + id;
+        binder_link_to_death(_bs, _svcs[id].target, &death);
+#endif
+    }
+
+    if (_svcs[id].target == 0) {
+        // printf("can not found valid service: id:%d, target:%d\n", id, _svcs[id].target);
+        return -1;
+    }
+
+    if (data && dsize > 0) {
+#if 1
+        void *ptr = bio_alloc(&msg, dsize);
+        if (!ptr) {
+            if (msg.flags & BIO_F_OVERFLOW) {
+                printf(" buffer overflow ...\n");
+                return -1;
+            }
+            return -1;
+        }
+        memcpy(ptr, (void *)data, dsize);
+#else
+        bio_init_with_prealloced(&msg, data, dsize, 0);
+#endif
+    }
+    if (!result || rsize == 0) {
+        // current not support one way, because binder_call limited
+    }
+
+    if (binder_call(_bs, &msg, &reply, _svcs[id].target, method)) {
+        // printf("%s(%d):can not call service: %d method:%d\n", __FUNCTION__, __LINE__, _svcs[id].target, method);
+        binder_release(_bs, _svcs[id].target);
+        _svcs[id].target = 0;
+        return -1;
+    }
+
+    status = bio_get_uint32(&reply);
+
+    if (result && rsize && reply.data_avail > 0) {
+        uint32_t len = bio_get_uint32(&reply);
+        // assert(len <= *rsize);
+        if (*rsize < len) {
+            if (!realloc_fn) {
+                binder_done(_bs, &msg, &reply);
+                return -1;
+            }
+            void *t = realloc_fn(*result, len);
+            if (!t) {
+                binder_done(_bs, &msg, &reply);
+                return -1;
+            }
+            // printf("realloc memory *size -> len:%d -> %d, *result -> ptr: %p -> %p\n", *rsize, len, *result, t);
+            *result = t;
+        }
+
+        *rsize = len;
+
+        void *ptr = bio_get(&reply, len);
+        if (!ptr) {
+            binder_done(_bs, &msg, &reply);
+            return -1;
+        }
+        memcpy(*result, ptr, len);
+    }
+
+    binder_done(_bs, &msg, &reply);
+
+    return status;
+}

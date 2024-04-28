@@ -11,9 +11,11 @@
  * source code was originally received.
  */
 
-#include <stdio.h>
-
 #include "hrifd.h"
+
+#include <stdio.h>
+#include <unistd.h>
+
 
 #define ALOGE(x...) fprintf(stderr, "hrifd: " x)
 

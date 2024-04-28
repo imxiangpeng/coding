@@ -4,9 +4,7 @@
 #ifndef _HRBINDER_H_
 #define _HRBINDER_H_
 
-#include <unistd.h>
-#include <inttypes.h>
-#include <sys/ioctl.h>
+#include <sys/types.h>
 #include <linux/android/binder.h>
 
 #define BIO_F_SHARED    0x01  /* needs to be buffer freed */
@@ -90,6 +88,11 @@ int binder_become_context_manager(struct binder_state *bs);
  * offset entries to reserve from the buffer
  */
 void bio_init(struct binder_io *bio, void *data,
+           size_t maxdata, size_t maxobjects);
+/*
+ * memory will be released after written
+ */
+void bio_init_with_prealloced(struct binder_io *bio, void *data,
            size_t maxdata, size_t maxobjects);
 
 void *bio_alloc(struct binder_io *bio, size_t size);

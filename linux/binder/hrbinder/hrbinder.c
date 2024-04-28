@@ -1,10 +1,11 @@
 /* Copyright 2008 The Android Open Source Project
  */
 
-#define LOG_TAG "Binder"
+#define LOG_TAG "HRBinder"
+
+#include "hrbinder.h"
 
 #include <unistd.h>
-#include "linux/android/binder.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
@@ -12,10 +13,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
+#include <sys/ioctl.h>
 
 #define ALOGE(x...) fprintf(stderr, "Binder: " x)
 
-#include "hrbinder.h"
 
 #define MAX_BIO_SIZE (1 << 30)
 
@@ -259,6 +260,11 @@ int binder_parse(struct binder_state *bs, struct binder_io *bio,
                 } else {
                     binder_send_reply(bs, &reply, txn->data.ptr.buffer, res);
                 }
+                // mxp, 20240426 release memory when needed
+                if (reply.flags & BIO_F_MALLOCED) {
+                    free(reply.offs0);
+                    reply.offs0 = 0;
+                }
             }
             ptr += sizeof(*txn);
             break;
@@ -457,7 +463,7 @@ void bio_init(struct binder_io *bio, void *data,
     size_t n = maxoffs * sizeof(size_t);
 
     if (n > maxdata) {
-        bio->flags = BIO_F_OVERFLOW;
+        bio->flags |= BIO_F_OVERFLOW;
         bio->data_avail = 0;
         bio->offs_avail = 0;
         return;
@@ -468,6 +474,13 @@ void bio_init(struct binder_io *bio, void *data,
     bio->data_avail = maxdata - n;
     bio->offs_avail = maxoffs;
     bio->flags = 0;
+}
+
+void bio_init_with_prealloced(struct binder_io *bio, void *data,
+              size_t maxdata, size_t maxoffs)
+{
+    bio_init(bio, data, maxdata, maxoffs);
+    bio->flags = BIO_F_MALLOCED;
 }
 
 void *bio_alloc(struct binder_io *bio, size_t size)

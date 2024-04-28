@@ -22,8 +22,13 @@
 
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/shm.h>
+
+static void *_realloc(void *ptr, uint32_t size) {
+    return realloc(ptr, size);
+}
 
 int hrif_network_init() {
     return hrif_transact(HRIF_TRANSACT_CODE_NETWORK_INIT, NULL, 0, NULL, NULL);
@@ -223,19 +228,80 @@ int hrif_network_lanhost_limitspeed_set(hrif_limitspeed_t *limit) {
     return hrif_transact(HRIF_TRANSACT_CODE_NETWORK_LANHOST_LIMITSPEED_SET, (void *)limit, sizeof(hrif_limitspeed_t), NULL, NULL);
 }
 
-int hrif_network_limit_get(hrif_limit_t *limit) {
-    (void)limit;
-    return 0;
+// using prealloc shared memory
+// please release memory *limit when you passed *limit is not null
+// *limit will be auto allocate when *limit == NULL
+int hrif_network_limit_get(hrif_limit_e mode, hrif_limit_t **limit, uint32_t *size) {
+    int result = 0;
+    uint32_t len = 0;
+    void *ptr = NULL;
+
+    if (!limit || !size) return -1;
+
+    result = hrif_transact2(HRIF_TRANSACT_CODE_NETWORK_LIMIT_GET, (void *)&mode, sizeof(mode), &ptr, &len, _realloc);
+    if (result != 0) {
+        return result;
+    }
+
+    *size = len / sizeof(hrif_limit_t);
+    *limit = ptr;
+    return result;
 }
-// we should convert link to continue memory block
-int hrif_network_limit_set(hrif_limit_t *limit) {
-    (void)limit;
-    return 0;
+// we may pass null & 0 for clear limit table
+int hrif_network_limit_set(hrif_limit_e mode, hrif_limit_t *limit, uint32_t size) {
+    int result = 0;
+    int sid = -1;
+    void *ptr = NULL;
+    struct {
+        key_t key;
+        hrif_limit_e mode;
+        size_t max_size;
+    } data;
+    // if (!limit) return -1;
+
+    uint32_t len = sizeof(hrif_limit_t) * size;
+
+    if (len > 0) {
+        // using method function address as id
+        sid = shmget((key_t)limit, len, IPC_CREAT | 0666);
+        if (sid < 0) return -1;
+
+        ptr = shmat(sid, 0, 0);
+        if (ptr == (void *)-1) {
+            printf("can not get shared memory ..........\n");
+            shmctl(sid, IPC_RMID, NULL);
+            return -1;
+        }
+    }
+
+    data.key = (key_t)limit;
+    data.mode = mode;
+    data.max_size = size;
+
+    if (ptr) {
+        memcpy((void *)ptr, limit, size * sizeof(hrif_limit_t));
+    }
+
+    result = hrif_transact(HRIF_TRANSACT_CODE_NETWORK_LIMIT_SET, (void *)&data, sizeof(data), NULL, NULL);
+    if (result <= 0) {
+        shmdt(ptr);
+        shmctl(sid, IPC_RMID, NULL);
+        return result;
+    }
+
+    if (ptr) {
+        shmdt(ptr);
+        shmctl(sid, IPC_RMID, NULL);
+    }
+
+    return result;
 }
+#if 0
 int hrif_network_limit_del(hrif_limit_t *limit) {
     (void)limit;
     return 0;
 }
+#endif
 
 int hrif_network_port_forwarding_add(hrif_port_forwarding_t *port_forwarding) {
     return hrif_transact(HRIF_TRANSACT_CODE_NETWORK_PORT_FORWARDING_ADD, (void *)port_forwarding, sizeof(hrif_port_forwarding_t), NULL, NULL);
@@ -249,9 +315,16 @@ int hrif_network_port_forwarding_del(char *port_forwarding_indexs) {
 }
 
 int hrif_network_port_forwarding_array(hrif_port_forwarding_t **list, uint32_t *size) {
-    (void)list;
-    (void)size;
-    return 0;
+    void *ptr = NULL;
+    u_int32_t length = 0;
+    if (!list || !size) return -1;
+    int result = hrif_transact2(HRIF_TRANSACT_CODE_NETWORK_PORT_FORWARDING_ARRAY, (void *)NULL, 0, &ptr, &length, _realloc);
+    if (result == 0) {
+        *size = length / sizeof(hrif_port_forwarding_t);
+        *list = ptr;
+    }
+
+    return result;
 }
 
 int hrif_network_dmz_get(hrif_dmz_t *dmz) {
