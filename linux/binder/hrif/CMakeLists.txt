@@ -15,24 +15,29 @@ INCLUDE_DIRECTORIES($ENV{HI_HISI_BASIC_DIR}/include $ENV{HI_HISI_BASIC_DIR}/linu
 link_directories($ENV{HI_INSTALL_ROOTFS_DIR}/usr/lib)
 
 ADD_DEFINITIONS(-Wall -Wextra -Werror)
+ADD_DEFINITIONS(-funwind-tables)
 
 ADD_EXECUTABLE(hrifd hrifd/hrifd.c
             hrifd/hrifd_system.c
             hrifd/hrifd_network.c
-            hrifd/hrifd_wireless.c)
+            hrifd/hrifd_wireless.c
+            hrifd/hrifd_easymesh.c)
 
 TARGET_LINK_LIBRARIES(hrifd hr_base)
 TARGET_LINK_LIBRARIES(hrifd hrbinder)
-#TARGET_LINK_LIBRARIES(hrifd uobject)
 TARGET_LINK_LIBRARIES(hrifd hrif_impl)
+TARGET_LINK_LIBRARIES(hrifd unwind unwind-generic)
 
-TARGET_COMPILE_DEFINITIONS(hrifd PRIVATE LOG_TAG="hrif")
+add_dependencies(hrifd odm_thirdparty_libunwind_build)
+
+TARGET_COMPILE_DEFINITIONS(hrifd PRIVATE LOG_TAG="hrifd")
 
 SET_TARGET_PROPERTIES(hrifd PROPERTIES LINK_FLAGS "-Wl,-rpath-link,$ENV{HI_INSTALL_ROOTFS_DIR}/usr/lib")
 
 # sample code, default do not install.
 INSTALL(TARGETS hrifd DESTINATION $ENV{HI_INSTALL_ROOTFS_DIR}/usr/bin)
 INSTALL(FILES hrsvc.d/hrifd.json DESTINATION $ENV{HI_INSTALL_ROOTFS_DIR}/etc/hrsvc.d)
+INSTALL(FILES hrsvc.d/diag.json DESTINATION $ENV{HI_INSTALL_ROOTFS_DIR}/etc/hrsvc.d)
 
 
 SET(SOURCES hrif_network.c hrif_system.c hrif_wireless.c hrif_update.c hrif_easymesh.c hrif_diagnostics.c hrif_table.c)

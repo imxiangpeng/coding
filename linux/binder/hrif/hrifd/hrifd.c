@@ -13,11 +13,32 @@
 
 #include "hrifd.h"
 
-#include <stdio.h>
-#include <unistd.h>
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
 
+#include <dlfcn.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <signal.h>
+#include <libunwind.h>
+
+#include <ucontext.h>
+#include <sys/mman.h>
 
 #define ALOGE(x...) fprintf(stderr, "hrifd: " x)
+
+#ifndef _UNUSED
+#define _UNUSED __attribute__((__unused__))
+#endif
+
+// mxp, 20240430, current alt sig stack is not working
+#define ENABLE_ALTSIG_STACK 0
+
+#define MAX_BACKTRACE_LINE_LENGTH 512
+#define MAX_BACKTRACE_DEPTH 16
 
 static struct binder_state *_bs = NULL;
 
@@ -102,10 +123,113 @@ static int _hrifd_ping(void) {
     return 0;
 }
 
+static void _signal_action(int signum, siginfo_t *siginfo _UNUSED, void *sigcontext) {
+    (void)sigcontext;
+    char line[MAX_BACKTRACE_LINE_LENGTH] = {0};
+    ucontext_t *uct = sigcontext;
+    uint32_t i = 0;
+    unw_cursor_t cursor;
+    unw_context_t uc;
+
+    (void)uct;
+    signal(signum, SIG_DFL);
+
+    unw_getcontext(&uc);
+    unw_init_local(&cursor, &uc);
+    // unw_init_local2(&cursor, &uc, UNW_INIT_SIGNAL_FRAME);
+
+    // dont assign reg manual which leading loss stack
+#ifdef __arm__
+    unw_set_reg(&cursor, UNW_ARM_R0, uct->uc_mcontext.arm_r0);
+    unw_set_reg(&cursor, UNW_ARM_R1, uct->uc_mcontext.arm_r1);
+    unw_set_reg(&cursor, UNW_ARM_R2, uct->uc_mcontext.arm_r2);
+    unw_set_reg(&cursor, UNW_ARM_R3, uct->uc_mcontext.arm_r3);
+    unw_set_reg(&cursor, UNW_ARM_R4, uct->uc_mcontext.arm_r4);
+    unw_set_reg(&cursor, UNW_ARM_R5, uct->uc_mcontext.arm_r5);
+    unw_set_reg(&cursor, UNW_ARM_R6, uct->uc_mcontext.arm_r6);
+    unw_set_reg(&cursor, UNW_ARM_R7, uct->uc_mcontext.arm_r7);
+    unw_set_reg(&cursor, UNW_ARM_R8, uct->uc_mcontext.arm_r8);
+    unw_set_reg(&cursor, UNW_ARM_R9, uct->uc_mcontext.arm_r9);
+    unw_set_reg(&cursor, UNW_ARM_R10, uct->uc_mcontext.arm_r10);
+    unw_set_reg(&cursor, UNW_ARM_R11, uct->uc_mcontext.arm_fp);
+    unw_set_reg(&cursor, UNW_ARM_R12, uct->uc_mcontext.arm_ip);
+    unw_set_reg(&cursor, UNW_ARM_R13, uct->uc_mcontext.arm_sp);
+    unw_set_reg(&cursor, UNW_ARM_R14, uct->uc_mcontext.arm_lr);
+    unw_set_reg(&cursor, UNW_ARM_R15, uct->uc_mcontext.arm_pc);
+    unw_set_reg(&cursor, UNW_REG_IP, uct->uc_mcontext.arm_pc);
+    unw_set_reg(&cursor, UNW_REG_SP, uct->uc_mcontext.arm_sp);
+#endif
+
+    printf("RECV SIGNAL: %d\n", signum);
+
+    do {
+        unw_word_t pc;
+        _UNUSED unw_word_t offset;
+        char sym[256] = {0};
+        char filename[256] = {0};
+
+        unw_get_reg(&cursor, UNW_REG_IP, &pc);
+        if (unw_is_signal_frame(&cursor)) {
+            printf("skip signal ......\n");
+            // continue;
+        }
+
+        unw_get_proc_name(&cursor, sym, sizeof(sym), &offset);
+
+        unw_get_elf_filename(&cursor, filename, sizeof(filename), NULL);
+
+        snprintf(line, sizeof(line), "#%02u pc %08x %.*s (%.*s+%d)", i, pc, 30 /**/, filename, 30, sym, offset);
+        printf("%s\n", line);
+
+        i++;
+    } while (unw_step(&cursor) >= 0 && i < MAX_BACKTRACE_DEPTH);
+
+    exit(EXIT_FAILURE);
+}
+
+static void _signal_init() {
+#if ENABLE_ALTSIG_STACK
+    stack_t stack;
+    memset(&stack, 0, sizeof(stack));
+    /* Reserver the system default stack size. We don't need that much by the way. */
+    stack.ss_size = SIGSTKSZ;
+    stack.ss_sp = malloc(stack.ss_size);
+    stack.ss_flags = 0;
+    /* Install alternate stack size. Be sure the memory region is valid until you revert it. */
+    sigaltstack(&stack, NULL);
+#endif
+
+    struct sigaction action;
+    memset(&action, 0, sizeof(action));
+    sigemptyset(&action.sa_mask);
+    action.sa_sigaction = _signal_action;
+    action.sa_flags = SA_RESTART | SA_SIGINFO;
+
+#if ENABLE_ALTSIG_STACK
+    // mxp, 20240430, must set SA_ONSTACK otherwise we may not obtion full stack
+    // Use the alternate signal stack if available so we can catch stack overflows.
+    action.sa_flags |= SA_ONSTACK;
+#endif
+
+    sigaction(SIGABRT, &action, NULL);
+    sigaction(SIGBUS, &action, NULL);
+    sigaction(SIGFPE, &action, NULL);
+    sigaction(SIGILL, &action, NULL);
+    sigaction(SIGPIPE, &action, NULL);
+    sigaction(SIGSEGV, &action, NULL);
+#if defined(SIGSTKFLT)
+    sigaction(SIGSTKFLT, &action, NULL);
+#endif
+    sigaction(SIGTRAP, &action, NULL);
+}
+
 int main(int argc, char **argv) {
     (void)argc;
     (void)argv;
     int retries = 20;
+
+    _signal_init();
+
     // adjust output line buffered mode
     setvbuf(stdout, NULL, _IOLBF, 0);
 
