@@ -11,6 +11,8 @@
  * source code was originally received.
  */
 
+// mxp, 20240423, binder client
+
 #include "private/hrif.h"
 
 #include <stdio.h>
@@ -30,6 +32,7 @@ static struct _svc {
     {HRIF_TRANSACT_CODE_SYSTEM_BASE, "hrifd.system", 0},
     {HRIF_TRANSACT_CODE_NETWORK_BASE, "hrifd.network", 0},
     {HRIF_TRANSACT_CODE_WIRELESS_BASE, "hrifd.wireless", 0},
+    {HRIF_TRANSACT_CODE_EASYMESH_BASE, "hrifd.easymesh", 0},
     {-1, NULL, 0}};
 
 #if 0

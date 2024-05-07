@@ -316,7 +316,7 @@ int hrif_network_port_forwarding_del(char *port_forwarding_indexs) {
 
 int hrif_network_port_forwarding_array(hrif_port_forwarding_t **list, uint32_t *size) {
     void *ptr = NULL;
-    u_int32_t length = 0;
+    uint32_t length = 0;
     if (!list || !size) return -1;
     int result = hrif_transact2(HRIF_TRANSACT_CODE_NETWORK_PORT_FORWARDING_ARRAY, (void *)NULL, 0, &ptr, &length, _realloc);
     if (result == 0) {
@@ -414,5 +414,9 @@ int hrif_network_qos_get(hrif_qos_t *data) {
 int hrif_network_qos_set(hrif_qos_t *data) {
     if (!data) return -1;
     return hrif_transact(HRIF_TRANSACT_CODE_NETWORK_QOS_SET, (void *)data, sizeof(hrif_qos_t), NULL, NULL);
-    return 0;
+}
+
+hrif_duplex_e hrif_network_duplexmode(char *dev) {
+    if (!dev) return -1;
+    return (hrif_duplex_e)hrif_transact(HRIF_TRANSACT_CODE_NETWORK_DUPLEX_MODE, (void *)dev, strlen(dev) + 1, NULL, NULL);
 }

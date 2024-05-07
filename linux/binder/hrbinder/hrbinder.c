@@ -1,7 +1,9 @@
 /* Copyright 2008 The Android Open Source Project
  */
 
-#define LOG_TAG "HRBinder"
+// mxp, 20240423, reference from servicemanager of android 9
+
+#define LOG_TAG "HrBinder"
 
 #include "hrbinder.h"
 

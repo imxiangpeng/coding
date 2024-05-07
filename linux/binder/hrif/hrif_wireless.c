@@ -13,15 +13,21 @@
 
 #include "hrif_wireless.h"
 
-
 #include "private/hrif.h"
 
 #include "hrbinder.h"
 
 #include "private/hrif_transact_code.h"
+#include "sys/types.h"
+#include "zconf.h"
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+
+static void *_realloc(void *ptr, uint32_t size) {
+    return realloc(ptr, size);
+}
 
 int hrif_wireless_init() {
     return hrif_transact(HRIF_TRANSACT_CODE_WIRELESS_INIT, NULL, 0, NULL, NULL);
@@ -81,56 +87,173 @@ int hrif_wireless_bandsteering_set(hrif_wireless_bandsteering_t *bandsteering) {
 }
 
 int hrif_wireless_scan_list_array(hrif_wireless_scan_node_t **list, uint32_t *size, hrif_wireless_band_e band) {
-    (void)list;
-    (void)size;
-    (void)band;
-    return 0;
+    void *ptr = NULL;
+    uint32_t length = 0;
+
+    if (!list || !size) return -1;
+
+    int result = hrif_transact2(HRIF_TRANSACT_CODE_WIRELESS_SCAN_LIST_ARRAY, (void *)&band, sizeof(band), &ptr, &length, _realloc);
+    if (result == 0) {
+        *size = length / sizeof(hrif_wireless_scan_node_t);
+        *list = ptr;
+    }
+
+    return result;
 }
 
 int hrif_wireless_scan_connect(hrif_wireless_scan_node_t *node) {
-    (void)node;
-    return 0;
+    if (!node) return -1;
+    return hrif_transact(HRIF_TRANSACT_CODE_WIRELESS_SCAN_CONNECT, node, sizeof(hrif_wireless_scan_node_t), NULL, NULL);
 }
 
 int hrif_wireless_scan_status(uint32_t *status) {
-    (void)status;
-    return 0;
+    uint32_t length = sizeof(uint32_t);
+    if (!status) return -1;
+    return hrif_transact(HRIF_TRANSACT_CODE_WIRELESS_SCAN_STATUS, NULL, 0, (void *)status, &length);
 }
 
 int hrif_wireless_wps_set(hrif_wireless_band_e band) {
-    (void)band;
-    return 0;
+    return hrif_transact(HRIF_TRANSACT_CODE_WIRELESS_WPS_SET, (void *)&band, sizeof(band), NULL, NULL);
 }
 
-int hrif_wireless_wps_get(uint32_t *status, hrif_wireless_band_e band) {
-    (void)status;
-    (void)band;
-    return 0;
+int hrif_wireless_wps_get(hrif_wireless_band_e band, uint32_t *status) {
+    uint32_t length = sizeof(uint32_t);
+    if (!status) return -1;
+    return hrif_transact(HRIF_TRANSACT_CODE_WIRELESS_WPS_GET, (void *)&band, sizeof(band), (void *)status, &length);
 }
 
-int hrif_wireless_timer_switch_set() {
+int hrif_wireless_wps_switch_set(hrif_wireless_band_e band, uint32_t status) {
+    struct {
+        int band;
+        uint32_t status;
+    } d = {band, status};
+    return hrif_transact(HRIF_TRANSACT_CODE_WIRELESS_WPS_SWITCH_SET, (void *)&d, sizeof(d), NULL, NULL);
+}
 
-    return 0;
+int hrif_wireless_wps_switch_get(hrif_wireless_band_e band, uint32_t *status) {
+    uint32_t length = sizeof(uint32_t);
+    if (!status) return -1;
+    return hrif_transact(HRIF_TRANSACT_CODE_WIRELESS_WPS_SWITCH_GET, (void *)&band, sizeof(band), (void *)status, &length);
+}
+
+int hrif_wireless_timer_switch_set(int on) {
+    return hrif_transact(HRIF_TRANSACT_CODE_WIRELESS_TIMER_SWITCH_SET, (void *)&on, sizeof(on), NULL, NULL);
+}
+
+int hrif_wireless_timer_switch_get() {
+    return hrif_transact(HRIF_TRANSACT_CODE_WIRELESS_TIMER_SWITCH_GET, NULL, 0, NULL, NULL);
 }
 
 int hrif_wireless_timer_add(hrif_wireless_timer_t *data) {
-    (void)data;
-    return 0;
+    if (!data) return -1;
+    return hrif_transact(HRIF_TRANSACT_CODE_WIRELESS_TIMER_ADD, (void *)data, sizeof(*data), NULL, NULL);
 }
 
 int hrif_wireless_timer_del(char *idx) {
-    (void)idx;
-    return 0;
+    if (!idx) return -1;
+    int len = 4 /*len*/ + strlen(idx) + 1 /*end*/;
+    uint32_t *ptr = (uint32_t *)calloc(1, len);
+    if (!ptr) return -1;
+    *ptr = strlen(idx) + 1;
+    memcpy((void *)(ptr + 1), idx, strlen(idx));
+    int result = hrif_transact(HRIF_TRANSACT_CODE_WIRELESS_TIMER_DEL, (void *)ptr, len, NULL, NULL);
+    free(ptr);
+    return result;
 }
 
 int hrif_wireless_timer_mod(hrif_wireless_timer_t *data) {
-    (void)data;
-
-    return 0;
+    if (!data) return -1;
+    return hrif_transact(HRIF_TRANSACT_CODE_WIRELESS_TIMER_ADD, (void *)data, sizeof(*data), NULL, NULL);
 }
 
 int hrif_wireless_timer_array(hrif_wireless_timer_t **list, uint32_t *size) {
-    (void)list;
-    (void)size;
-    return 0;
+    void *ptr = NULL;
+    uint32_t length = 0;
+
+    if (!list || !size) return -1;
+
+    int result = hrif_transact2(HRIF_TRANSACT_CODE_WIRELESS_TIMER_ARRAY, NULL, 0, &ptr, &length, _realloc);
+    if (result == 0) {
+        *size = length / sizeof(hrif_wireless_timer_t);
+        *list = ptr;
+    }
+
+    return result;
+}
+
+int hrif_wireless_deassociate(const char *mac) {
+    if (!mac) return -1;
+
+    // pass raw string
+    return hrif_transact(HRIF_TRANSACT_CODE_WIRELESS_DEASSOCIATE, (void *)mac, strlen(mac) + 1, NULL, NULL);
+}
+
+int hrif_wireless_channelscan(hrif_wireless_band_e band) {
+    return hrif_transact(HRIF_TRANSACT_CODE_WIRELESS_CHANNEL_SCAN, (void *)&band, sizeof(band), NULL, NULL);
+}
+
+int hrif_wireless_vsie_get(hrif_wireless_vsie_t *vsie) {
+    uint32_t length = sizeof(hrif_wireless_vsie_t);
+    if (!vsie) return -1;
+    return hrif_transact(HRIF_TRANSACT_CODE_WIRELESS_VSIE_GET, NULL, 0, (void *)vsie, &length);
+}
+
+int hrif_wireless_vsie_beacontx_set(hrif_wireless_vsie_beacontx_action_e action, hrif_wireless_vsie_beacontx_t *vsie_beacontx) {
+    if (!vsie_beacontx) return -1;
+    struct {
+        int action;
+        hrif_wireless_vsie_beacontx_t data;
+    } d = {action, *vsie_beacontx};
+    return hrif_transact(HRIF_TRANSACT_CODE_WIRELESS_VSIE_BEACONTX_SET, (void *)&d, sizeof(d), NULL, NULL);
+}
+
+int hrif_wireless_vsie_beacontx_list(hrif_wireless_vsie_beacontx_t **vsie_beacontx, uint32_t *num) {
+    void *ptr = NULL;
+    uint32_t length = 0;
+
+    if (!vsie_beacontx || !num) return -1;
+
+    int result = hrif_transact2(HRIF_TRANSACT_CODE_WIRELESS_VSIE_BEACONTX_LST, NULL, 0, &ptr, &length, _realloc);
+    if (result == 0) {
+        *num = length / sizeof(hrif_wireless_timer_t);
+        *vsie_beacontx = ptr;
+    }
+
+    return result;
+}
+
+int hrif_wireless_vsie_proberx_set(hrif_wireless_vsie_proberx_action_e action, hrif_wireless_vsie_proberx_t *vsie_proberx) {
+    if (!vsie_proberx) return -1;
+    struct {
+        int action;
+        hrif_wireless_vsie_proberx_t data;
+    } d = {action, *vsie_proberx};
+    return hrif_transact(HRIF_TRANSACT_CODE_WIRELESS_VSIE_PROBERX_SET, (void *)&d, sizeof(d), NULL, NULL);
+}
+
+int hrif_wireless_vsie_proberx_list(hrif_wireless_vsie_proberx_t **vsie_proberx, uint32_t *num) {
+    void *ptr = NULL;
+    uint32_t length = 0;
+
+    if (!vsie_proberx || !num) return -1;
+    int result = hrif_transact2(HRIF_TRANSACT_CODE_WIRELESS_VSIE_PROBERX_LST, NULL, 0, &ptr, &length, _realloc);
+    if (result == 0) {
+        *num = length / sizeof(hrif_wireless_timer_t);
+        *vsie_proberx = ptr;
+    }
+
+    return result;
+}
+
+int hrif_wireless_channelscore_get(hrif_wireless_band_e band, hrif_wireless_channelscore_t **score, int *num) {
+    void *ptr = NULL;
+    uint32_t length = 0;
+    if (!score|| !num) return -1;
+    int result = hrif_transact2(HRIF_TRANSACT_CODE_WIRELESS_CHANNEL_SCORE_GET, (void*)&band, sizeof(band), &ptr, &length, _realloc);
+    if (result == 0) {
+        *num = length / sizeof(hrif_wireless_channelscore_t);
+        *score = ptr;
+    }
+
+    return result;
 }

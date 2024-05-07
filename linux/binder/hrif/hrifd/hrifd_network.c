@@ -31,74 +31,6 @@
 
 #define SVC_NAME "hrifd.network"
 
-// client get data without any param
-// data will be returned with follow format:
-// 4: result
-// 4: payload size
-// -: payload data
-// care that this method memory is limited
-#define HRIF_STRUCT_GET(type, getter)                                                         \
-    static int _##getter(struct binder_io *msg, struct binder_io *reply) {                    \
-        (void)msg;                                                                            \
-        if (!reply) return -1;                                                                \
-        int *ptr = (int *)bio_alloc(reply, 4 + 4 + sizeof(type)); /*result + size + payload*/ \
-        if (!ptr) {                                                                           \
-            if (reply->flags & BIO_F_OVERFLOW) {                                              \
-                HR_LOGE("buffer overflow ...\n");                                             \
-            }                                                                                 \
-            return -1;                                                                        \
-        }                                                                                     \
-        int result = getter((type *)(ptr + 2)); /*3. payload have been loade*/                \
-        *ptr = result;                          /*1. write result*/                           \
-        *(ptr + 1) = sizeof(type);              /*2. write payload size*/                     \
-        return 0;                                                                             \
-    }
-
-// when client pass struct object, we use this macro to pass it to implement interface
-// it get object from msg and call setter directly
-#define HRIF_STRUCT_SET(type, setter)                                      \
-    static int _##setter(struct binder_io *msg, struct binder_io *reply) { \
-        if (!msg || !reply) return -1;                                     \
-        int *ptr = (int *)bio_alloc(msg, sizeof(type));                    \
-        if (!ptr) {                                                        \
-            if (reply->flags & BIO_F_OVERFLOW) {                           \
-                HR_LOGE("buffer overflow ...\n");                          \
-            }                                                              \
-            return -1;                                                     \
-        }                                                                  \
-        return setter((type *)ptr);                                        \
-    }
-
-#define HRIF_STRUCT_GET_WITH_ID(type, getter)                                                  \
-    static int _##getter(struct binder_io *msg, struct binder_io *reply) {                     \
-        if (!msg || !reply) return -1;                                                         \
-        uint32_t id = bio_get_uint32(msg);                                                     \
-        int *ptr = (int *)bio_alloc(reply, 4 + 4 + sizeof(type)); /* result + size + payload*/ \
-        if (!ptr) {                                                                            \
-            if (reply->flags & BIO_F_OVERFLOW) {                                               \
-                HR_LOGE("buffer overflow ...\n");                                              \
-            }                                                                                  \
-            return -1;                                                                         \
-        }                                                                                      \
-        int result = getter(id, (type *)(ptr + 2)); /*3. payload have been loaded*/            \
-        *ptr = result;                              /*1. write result*/                        \
-        *(ptr + 1) = sizeof(type);                  /*2. write payload size*/                  \
-        return 0;                                                                              \
-    }
-
-#define HRIF_STRUCT_SET_WITH_ID(type, setter)                               \
-    static int _##setter(struct binder_io *msg, struct binder_io *reply) {  \
-        if (!msg || !reply) return -1;                                      \
-        int *ptr = (int *)bio_alloc(msg, 4 + sizeof(type)); /* id & ipv4 */ \
-        if (!ptr) {                                                         \
-            if (reply->flags & BIO_F_OVERFLOW) {                            \
-                HR_LOGE("buffer overflow ...\n");                           \
-            }                                                               \
-            return -1;                                                      \
-        }                                                                   \
-        return setter(*ptr /*id*/, (type *)(ptr + 1) /*data*/);             \
-    }
-
 static int _hrif_network_init(struct binder_io *msg, struct binder_io *reply) {
     (void)msg;
 
@@ -316,6 +248,7 @@ static int _hrif_network_limit_get(struct binder_io *msg, struct binder_io *repl
         ptr = realloc(lt, payload_length + 4 + 4);  // result + result size + payload
         if (!ptr) {
             bio_put_uint32(reply, -1);
+            free(lt); // not BIO_F_MALLOCED, release it
             return -1;
         }
 
@@ -328,6 +261,9 @@ static int _hrif_network_limit_get(struct binder_io *msg, struct binder_io *repl
     int *data = (int *)bio_alloc(reply, payload_length + 4 + 4);
     if (!data) {
         printf("not enough ..........\n");
+        if (!ptr) {
+            free(lt); // not BIO_F_MALLOCED, release it
+        }
         return -1;
     }
     *data = 0;
@@ -335,6 +271,7 @@ static int _hrif_network_limit_get(struct binder_io *msg, struct binder_io *repl
     // not using dynamic memory, we should copy it manual
     if (!ptr) {
         memcpy((void *)(data + 2), lt, payload_length);
+        free(lt); // not BIO_F_MALLOCED, release it
     }
 
     return 0;
@@ -413,7 +350,7 @@ static int _hrif_network_port_forwarding_array(struct binder_io *msg, struct bin
         bio_put_uint32(reply, -1);
         return -1;
     }
-    
+
     if (size == 0) {
         bio_put_uint32(reply, 0);
         return 0;
@@ -426,6 +363,7 @@ static int _hrif_network_port_forwarding_array(struct binder_io *msg, struct bin
         ptr = realloc(pf, payload_length + 4 + 4);  // result + result size + payload
         if (!ptr) {
             bio_put_uint32(reply, -1);
+            free(pf);
             return -1;
         }
 
@@ -438,6 +376,9 @@ static int _hrif_network_port_forwarding_array(struct binder_io *msg, struct bin
     int *data = (int *)bio_alloc(reply, payload_length + 4 + 4);
     if (!data) {
         printf("not enough ..........\n");
+        if (!ptr) {
+            free(pf);
+        }
         return -1;
     }
 
@@ -446,6 +387,7 @@ static int _hrif_network_port_forwarding_array(struct binder_io *msg, struct bin
     // not using dynamic memory, we should copy it manual
     if (!ptr) {
         memcpy((void *)(data + 2), pf, payload_length);
+        free(pf);
     }
 
     return 0;
@@ -474,6 +416,16 @@ HRIF_STRUCT_SET(hrif_url_filter_t, hrif_network_url_filter_set)
 
 HRIF_STRUCT_GET(hrif_qos_t, hrif_network_qos_get)
 HRIF_STRUCT_SET(hrif_qos_t, hrif_network_qos_set)
+
+static int _hrif_network_duplexmode(struct binder_io *msg, struct binder_io *reply) {
+    if (!msg || !reply) return -1;
+
+    // directly access raw data
+    char *ptr = (char *)msg->data;
+    if (!ptr) return -1;
+
+    return hrif_network_duplexmode(ptr);
+}
 
 // clang-format off
 static struct {
@@ -530,6 +482,7 @@ static struct {
     [HRIF_TRANSACT_CODE_NETWORK_URL_FILTER_SET & HRIF_TRANSACT_CODE_ID_MASK]             = {HRIF_TRANSACT_CODE_NETWORK_URL_FILTER_SET, _hrif_network_url_filter_set},
     [HRIF_TRANSACT_CODE_NETWORK_QOS_GET & HRIF_TRANSACT_CODE_ID_MASK]                    = {HRIF_TRANSACT_CODE_NETWORK_QOS_GET, _hrif_network_qos_get},
     [HRIF_TRANSACT_CODE_NETWORK_QOS_SET & HRIF_TRANSACT_CODE_ID_MASK]                    = {HRIF_TRANSACT_CODE_NETWORK_QOS_SET, _hrif_network_qos_set},
+    [HRIF_TRANSACT_CODE_NETWORK_DUPLEX_MODE & HRIF_TRANSACT_CODE_ID_MASK]                = {HRIF_TRANSACT_CODE_NETWORK_DUPLEX_MODE, _hrif_network_duplexmode},
 };
 // clang-format on
 

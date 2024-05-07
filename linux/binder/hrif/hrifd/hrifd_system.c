@@ -29,44 +29,6 @@
 
 #define SVC_NAME "hrifd.system"
 
-// client get data without any param
-// data will be returned with follow format:
-// 4: result
-// 4: payload size
-// -: payload data
-// care that this method memory is limited
-#define HRIF_STRUCT_GET(type, getter)                                                         \
-    static int _##getter(struct binder_io *msg, struct binder_io *reply) {                    \
-        (void)msg;                                                                            \
-        if (!reply) return -1;                                                                \
-        int *ptr = (int *)bio_alloc(reply, 4 + 4 + sizeof(type)); /*result + size + payload*/ \
-        if (!ptr) {                                                                           \
-            if (reply->flags & BIO_F_OVERFLOW) {                                              \
-                HR_LOGE("buffer overflow ...\n");                                             \
-            }                                                                                 \
-            return -1;                                                                        \
-        }                                                                                     \
-        int result = getter((type *)(ptr + 2)); /*3. payload have been loade*/                \
-        *ptr = result;                          /*1. write result*/                           \
-        *(ptr + 1) = sizeof(type);              /*2. write payload size*/                     \
-        return 0;                                                                             \
-    }
-
-// when client pass struct object, we use this macro to pass it to implement interface
-// it get object from msg and call setter directly
-#define HRIF_STRUCT_SET(type, setter)                                      \
-    static int _##setter(struct binder_io *msg, struct binder_io *reply) { \
-        if (!msg || !reply) return -1;                                     \
-        int *ptr = (int *)bio_alloc(msg, sizeof(type));                    \
-        if (!ptr) {                                                        \
-            if (reply->flags & BIO_F_OVERFLOW) {                           \
-                HR_LOGE("buffer overflow ...\n");                          \
-            }                                                              \
-            return -1;                                                     \
-        }                                                                  \
-        return setter((type *)ptr);                                        \
-    }
-
 static int _hrif_system_init(struct binder_io *msg, struct binder_io *reply) {
     (void)msg;
 
