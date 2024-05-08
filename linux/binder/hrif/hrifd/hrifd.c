@@ -139,7 +139,7 @@ static void _signal_action(int signum, siginfo_t *siginfo _UNUSED, void *sigcont
     // unw_init_local2(&cursor, &uc, UNW_INIT_SIGNAL_FRAME);
 
     // dont assign reg manual which leading loss stack
-#ifdef __arm__
+#if 0 //def __arm__
     unw_set_reg(&cursor, UNW_ARM_R0, uct->uc_mcontext.arm_r0);
     unw_set_reg(&cursor, UNW_ARM_R1, uct->uc_mcontext.arm_r1);
     unw_set_reg(&cursor, UNW_ARM_R2, uct->uc_mcontext.arm_r2);
@@ -160,7 +160,7 @@ static void _signal_action(int signum, siginfo_t *siginfo _UNUSED, void *sigcont
     unw_set_reg(&cursor, UNW_REG_SP, uct->uc_mcontext.arm_sp);
 #endif
 
-    printf("RECV SIGNAL: %d\n", signum);
+    printf("RECV SIGNAL(%d): %d\n", getpid(), signum);
 
     do {
         unw_word_t pc;
@@ -178,7 +178,7 @@ static void _signal_action(int signum, siginfo_t *siginfo _UNUSED, void *sigcont
 
         unw_get_elf_filename(&cursor, filename, sizeof(filename), NULL);
 
-        snprintf(line, sizeof(line), "#%02u pc %08x %.*s (%.*s+%d)", i, pc, 30 /**/, filename, 30, sym, offset);
+        snprintf(line, sizeof(line), "#%02u pc %08x %.*s (%.*s+%d)", i, pc, 128 /**/, filename, 60, sym, offset);
         printf("%s\n", line);
 
         i++;
