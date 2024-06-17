@@ -21,6 +21,7 @@
 
 #include "private/hrif_transact_code.h"
 #include "hrbinder.h"
+#define HRIF_MESSAGE_DATA_SIZE_WATER 512
 
 static struct binder_state *_bs = NULL;
 
@@ -127,20 +128,17 @@ int hrif_transact(int method, void *data, uint32_t dsize, void *result, uint32_t
     }
 
     if (data && dsize > 0) {
-#if 1
-        void *ptr = bio_alloc(&msg, dsize);
-        if (!ptr) {
-            if (msg.flags & BIO_F_OVERFLOW) {
-                printf(" buffer overflow ...\n");
-                return -1;
-            }
-            return -1;
+#ifdef HRIF_MESSAGE_DATA_SIZE_WATER
+        if (dsize > HRIF_MESSAGE_DATA_SIZE_WATER) {
+            printf("warning too large param size (%d) when call %s.0x%x\n", dsize, _svcs[id].name, method);
         }
-        memcpy(ptr, (void *)data, dsize);
-#else
-        bio_init_with_prealloced(&msg, data, dsize, 0);
 #endif
+        bio_init(&msg, data, dsize, 0);
+        // must move data point
+        msg.data += dsize;
+        msg.data_avail -= dsize;
     }
+
     if (!result || rsize == 0) {
         // current not support one way, because binder_call limited
     }
@@ -222,19 +220,15 @@ int hrif_transact2(int method, void *data, uint32_t dsize, void **result, uint32
     }
 
     if (data && dsize > 0) {
-#if 1
-        void *ptr = bio_alloc(&msg, dsize);
-        if (!ptr) {
-            if (msg.flags & BIO_F_OVERFLOW) {
-                printf(" buffer overflow ...\n");
-                return -1;
-            }
-            return -1;
+#ifdef HRIF_MESSAGE_DATA_SIZE_WATER
+        if (dsize > HRIF_MESSAGE_DATA_SIZE_WATER) {
+            printf("warning too large param size (%d) when call %s.0x%x\n", dsize, _svcs[id].name, method);
         }
-        memcpy(ptr, (void *)data, dsize);
-#else
-        bio_init_with_prealloced(&msg, data, dsize, 0);
 #endif
+        bio_init(&msg, data, dsize, 0);
+        // must move data point
+        msg.data += dsize;
+        msg.data_avail -= dsize;
     }
     if (!result || rsize == 0) {
         // current not support one way, because binder_call limited
