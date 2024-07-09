@@ -1,18 +1,9 @@
-/*
- * Copyright (C) 2024 Inspur Group Co., Ltd. Unpublished
- *
- * Inspur Group Co., Ltd.
- * Proprietary & Confidential
- *
- * This source code and the algorithms implemented therein constitute
- * confidential information and may comprise trade secrets of Inspur
- * or its associates, and any use thereof is subject to the terms and
- * conditions of the Non-Disclosure Agreement pursuant to which this
- * source code was originally received.
- */
+// 20240701, mxp, data model for unicom platform
+// all object maybe have getter/setter/adder/deleter ...
 
 #include "dm_object.h"
 
+#include <json-c/json_object.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -47,6 +38,8 @@ struct dm_object* dm_object_new(const char* name, enum dm_type type, dm_attribut
 
     memcpy(obj->name, name, strlen(name));
 
+    obj->parent = parent;
+
     if (parent) {
         hr_list_add_tail(&obj->sibling, &parent->childrens);
     } else {
@@ -55,6 +48,52 @@ struct dm_object* dm_object_new(const char* name, enum dm_type type, dm_attribut
     return obj;
 }
 
+// create object using full path
+struct dm_object* dm_object_new_ext(const char* name, enum dm_type type, dm_attribute getter, dm_attribute setter) {
+    struct dm_object* object = NULL;
+    char tmp[256] = {0};
+    char *token = NULL, *saveptr = NULL;
+    if (!name) return NULL;
+
+    memcpy(tmp, name, strlen(name));
+    saveptr = tmp;
+    while ((token = strtok_r(saveptr, ".", &saveptr))) {
+        int is_leaf = (saveptr == NULL || saveptr[0] == '\0') == 0 ? 1 : 0;
+        // this is last node/leaf
+        struct dm_object* dm = dm_object_lookup(token, object);
+        if (!dm) {
+            // HR_LOGD("%s(%d): can not found %s create it\n", __FUNCTION__, __LINE__, tmp);
+            if (is_leaf) {
+                dm = dm_object_new(token, type, getter, setter, object);
+            } else {
+                dm = dm_object_new(token, DM_TYPE_OBJECT, dm_object_attribute, NULL, object);
+            }
+        }
+        object = dm;
+    }
+
+    return object;
+}
+
+void dm_object_free(struct dm_object* object) {
+    struct dm_object *p = NULL, *n = NULL;
+
+    if (!object)
+        object = &_root;
+
+    hr_list_for_each_entry_safe(p, n, &object->childrens, sibling) {
+        // take off p
+        hr_list_del(&p->sibling);
+        HR_INIT_LIST_HEAD(&p->sibling);
+        dm_object_free(p);
+    }
+
+    HR_INIT_LIST_HEAD(&object->childrens);
+    if (object != &_root) {
+        // free it
+        free(object);
+    }
+}
 // query object using string from parent
 // parent will be redirect to _root when it's null
 struct dm_object* dm_object_lookup(const char* query, struct dm_object* parent) {
@@ -79,7 +118,6 @@ struct dm_object* dm_object_lookup(const char* query, struct dm_object* parent) 
 
     object = parent;
     while ((token = strtok_r(saveptr, ".", &saveptr))) {
-        // HR_LOGD("%s(%d): token %s parent:%p -> %s\n", __FUNCTION__, __LINE__, token, parent, parent->name);
         struct dm_object* p = NULL;
         int found = 0;
         hr_list_for_each_entry(p, &object->childrens, sibling) {
@@ -90,18 +128,95 @@ struct dm_object* dm_object_lookup(const char* query, struct dm_object* parent) 
             }
         }
         if (!found) {
-            HR_LOGD("%s(%d): cannot find token %s parent:%p -> %s\n", __FUNCTION__, __LINE__, token, object, object->name);
+            // HR_LOGD("%s(%d): cannot find token %s parent:%p -> %s\n", __FUNCTION__, __LINE__, token, object, object->name);
             return NULL;
         }
-        // HR_LOGD("%s(%d): found object %p -> %s\n", __FUNCTION__, __LINE__, object, object->name);
     }
 
     return object;
 }
 
+struct json_object* _dm_object_object(struct dm_object* self) {
+    struct dm_object* p = NULL;
+    struct json_object* root = json_object_new_object();
+
+    hr_list_for_each_entry(p, &self->childrens, sibling) {
+        struct dm_value val;
+        struct json_object* obj = NULL;
+        memset((void*)&val, 0, sizeof(val));
+
+        if (!p->getter) {
+            obj = json_object_new_null();
+            continue;
+        }
+
+        p->getter(p, &val);
+
+        switch (p->type) {
+            case DM_TYPE_STRING: {
+                obj = json_object_new_string(val.val.string);
+                break;
+            }
+            case DM_TYPE_NUMBER: {
+                obj = json_object_new_int(val.val.number);
+                break;
+            }
+            case DM_TYPE_BOOLEAN: {
+                obj = json_object_new_boolean(val.val.boolean);
+                break;
+            }
+            case DM_TYPE_OBJECT: {
+                obj = _dm_object_object(p);
+            }
+            default:
+                break;
+        }
+
+        dm_value_reset(&val);
+
+        if (obj) {
+            json_object_object_add(root, p->name, obj);
+        }
+    }
+
+    return root;
+}
 int dm_object_attribute(struct dm_object* self, struct dm_value* val) {
     // loop all childrens contruct json object ...
+    struct json_object* root = NULL;
+
+    if (self->type != DM_TYPE_OBJECT) {
+        return self->getter(self, val);
+    }
+
+    // now we only support object
+    if (self->type != DM_TYPE_OBJECT) {
+        return -1;
+    }
+
+    root = _dm_object_object(self);
+
+    // HR_LOGD("object:%s -> %s\n", self->name, json_object_to_json_string_ext(root, JSON_C_TO_STRING_PRETTY));
+    dm_value_set_string_ext(val, json_object_to_json_string_ext(root, JSON_C_TO_STRING_PLAIN | JSON_C_TO_STRING_NOSLASHESCAPE), 0);
+
+    json_object_put(root);
+
     return 0;
+}
+
+// using recursion generate full id, seperated with .
+int dm_object_id(struct dm_object* self, char* id, int len) {
+    if (!self || !id) {
+        return -1;
+    }
+    if (self->parent != NULL /*&& self->parent != &_root*/) {
+        int rc = dm_object_id(self->parent, id, len);
+        snprintf(id + rc, len - rc, ".%s", self->name);
+    } else {
+        snprintf(id, len, "%s", self->name);
+    }
+
+    return strlen(id);
 }
 
 int dm_value_reset(struct dm_value* val) {
@@ -129,6 +244,15 @@ int dm_value_set_number(struct dm_value* val, int number) {
     dm_value_reset(val);
     val->type = DM_TYPE_NUMBER;
     val->val.number = number;
+    return 0;
+}
+
+int dm_value_set_boolean(struct dm_value* val, int value) {
+    if (!val) return -1;
+
+    dm_value_reset(val);
+    val->type = DM_TYPE_BOOLEAN;
+    val->val.boolean = !!value;
     return 0;
 }
 int dm_value_set_string(struct dm_value* val, const char* str) {
