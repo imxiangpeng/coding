@@ -5,8 +5,14 @@
 #include "dm_object.h"
 #include "hr_log.h"
 
+extern void dm_send_notify(const char* params[], size_t size);
+
 static int OperatingFrequencyBand_getter(struct dm_object* self, struct dm_value* val) {
     HR_LOGD("%s(%d): this %p -> parent:%s, val:%p\n", __FUNCTION__, __LINE__, self, self->parent->name, val);
+    
+    char id[256] = {0};
+    dm_object_id(self, id, sizeof(id));
+    HR_LOGD("%s(%d): this %p ->%s -> %s\n", __FUNCTION__, __LINE__, self, self->name, id);
     if (!strcmp(self->parent->name, "2G")) {
         dm_value_set_string_ext(val, "2G", 1);
     } else {
@@ -22,6 +28,20 @@ static int OperatingFrequencyBand_setter(struct dm_object* self, struct dm_value
     } else if (val->type == DM_TYPE_STRING) {
         HR_LOGD("%s(%d): this %p -> parent:%s, val:%s\n", __FUNCTION__, __LINE__, self, self->parent->name, val->val.string);
     }
+
+    const char* params[10] = {NULL};
+
+    params[0] = "Hosts.Host.8";
+    params[1] = "Hosts.Host.11";
+    params[2] = strdup("xxxxxxxxxxx");
+    if (!strcmp(self->parent->name, "2G")) {
+        params[3] = strdup("Device.WiFi.X_CU_ACL.2G");
+
+    } else {
+        params[3] = strdup("Device.WiFi.X_CU_ACL.5G");
+    }
+
+    dm_send_notify(params, sizeof(params) / sizeof(params[0]));
 
     return 0;
 }
@@ -148,6 +168,9 @@ static int X_CU_SavePower_adder(struct dm_object* self, struct dm_value* val) {
 static int X_CU_SavePower_deleter(struct dm_object* self, struct dm_value* val) {
     HR_LOGD("%s(%d): this %p ->%s  parent:%s, val:%s\n", __FUNCTION__, __LINE__, self, self->name, self->parent->name, val->val.string);
 
+    char id[256] = {0};
+    dm_object_id(self, id, sizeof(id));
+    HR_LOGD("%s(%d): this %p ->%s -> %s\n", __FUNCTION__, __LINE__, self, self->name, id);
     struct dm_object* del = dm_object_lookup(val->val.string, NULL);
 
     // do system related work

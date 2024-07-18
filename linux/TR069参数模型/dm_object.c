@@ -3,7 +3,7 @@
 
 #include "dm_object.h"
 
-#include <json-c/json_object.h>
+#include <json-c/json.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -153,10 +153,6 @@ struct json_object* _dm_object_object(struct dm_object* self) {
         p->getter(p, &val);
 
         switch (p->type) {
-            case DM_TYPE_STRING: {
-                obj = json_object_new_string(val.val.string);
-                break;
-            }
             case DM_TYPE_NUMBER: {
                 obj = json_object_new_int(val.val.number);
                 break;
@@ -165,8 +161,15 @@ struct json_object* _dm_object_object(struct dm_object* self) {
                 obj = json_object_new_boolean(val.val.boolean);
                 break;
             }
+            case DM_TYPE_STRING: {
+                obj = json_object_new_string(val.val.string ? val.val.string : "");
+                break;
+            }           
             case DM_TYPE_OBJECT: {
-                obj = _dm_object_object(p);
+                // mxp, 20240716, we do not call _dm_object_object directly
+                // because getter has been called, the getter maybe dm_object_attribute, it will auto call us
+                // _dm_object_object maybe better performance, but user may use different implement
+                obj = json_tokener_parse(val.val.string ? val.val.string : "{}");
             }
             default:
                 break;
@@ -184,10 +187,6 @@ struct json_object* _dm_object_object(struct dm_object* self) {
 int dm_object_attribute(struct dm_object* self, struct dm_value* val) {
     // loop all childrens contruct json object ...
     struct json_object* root = NULL;
-
-    if (self->type != DM_TYPE_OBJECT) {
-        return self->getter(self, val);
-    }
 
     // now we only support object
     if (self->type != DM_TYPE_OBJECT) {
