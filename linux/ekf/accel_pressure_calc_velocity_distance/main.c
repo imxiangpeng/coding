@@ -19,13 +19,13 @@ struct dm_ekf {
 static /*const*/ double Q[EKF_N * EKF_N] = {
     1e-1, 0,    0,
     0,    1e-1, 0,
-    0,    0,    1e-2
+    0,    0,    1e-3
 };
 
 static const double R[EKF_M * EKF_M] = {
     // 1e-3, 0,
     // 0,    1e-3
-    1E-2
+    1E-3
 };
 
 static double pressure_to_altitude(double pressure) {
@@ -70,10 +70,10 @@ static void dm_ekf_run_model (struct dm_ekf *self, double dt, double measured_ac
       printf("ZUPT ...............\n");
         fx[1] = 0;
         ekf->x[1] = 0;  // 速度置 0
-        // ekf->P[EKF_N + 1] = 1e-6;  // 速度误差极小，避免恢复
-        //Q[ EKF_N + 1] = 1e-6;  // 降低速度噪声
-        F[1] = 0;
-        F[EKF_N + 1] = 0;
+        ekf->P[EKF_N + 1] = 1e-6;  // 速度误差极小，避免恢复
+        // Q[ EKF_N + 1] = 1e-6;  // 降低速度噪声
+        //F[1] = 0;
+        //F[EKF_N + 1] = 0;
     }
 
     ekf_predict(ekf, fx, F, Q);
@@ -89,8 +89,9 @@ static void dm_ekf_run_model (struct dm_ekf *self, double dt, double measured_ac
 
     if (fabs(measured_accel) < 0.1) measured_accel = 0;
  
-    distance += speed * dt + 0.5 * measured_accel * dt * dt;
+    double s = speed;
     speed += measured_accel * dt;
+    distance += 0.5 * (s + speed) * dt + 0.5 * measured_accel * dt * dt;
     if (measured_accel == 0) {
         if (fabs(speed) < 0.3)
             speed = 0;
@@ -136,12 +137,13 @@ void process_csv(const char *filename) {
             printf("CSV 解析错误:%s\n", line);
             continue;
         }
+        if (i++ < 440) continue;
 #else
         if (sscanf(line, "%lf,%*lf,%*lf,%*lf,%lf,%*lf,%*lf,%lf", &now, &accel, &ag) != 3) {
             printf("CSV 解析错误:%s\n", line);
             continue;
         }
-        if (i++ < 400) continue;
+        //if (i++ < 400) continue;
 
         static double prev_time = 0;
         dt = now - prev_time;
