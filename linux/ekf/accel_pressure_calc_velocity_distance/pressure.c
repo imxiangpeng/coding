@@ -4,9 +4,20 @@
 #include <string.h>
 #include <unistd.h>
 
+// 海平面标准气压 (Pa)
+#define P0 101325.0
 
-#define EKF_N 4  // 状态变量 [h, v, a, p]
-#define EKF_M 2  // 观测变量 [h_m (气压计算), a_m (加速度)]
+// 温度递减率 (K/m)
+#define L 0.0065
+
+static const double PRESSURE_L = 0.0065;
+static const double PRESSURE_R = 8.31432;
+static const double PRESSURE_M = 0.0289644;
+
+static const double G0 = 9.829267;
+
+#define EKF_N 5  // 状态变量 [h, v, a, p, t]
+#define EKF_M 3  // 观测变量 [ a_m (加速度), h_m (气压计算), temp]
                  //
 #define _float_t double
 
@@ -17,56 +28,74 @@ struct dm_ekf {
 };
 
 static /*const*/ double Q[EKF_N * EKF_N] = {
-    1e-1, 0,    0, 0,
-    0,    1e-1, 0, 0,
-    0,    0,    1e-3, 0,
-    0,    0,    0, 1e-3
+    1e-1, 0,    0, 0, 0,
+    0,    1e-1, 0, 0, 0,
+    0,    0,    1e-3, 0,0,
+    0,    0,    0, 1e-2, 0,
+    0,    0,    0, 0, 1e-1
 };
 
 static const double R[EKF_M * EKF_M] = {
-     1e-3, 0,
-     0,    1e-3
+     1e-3, 0, 0,
+     0,  1e-3, 0,
+    0, 0, 1e-1
 };
 
+#if 0    
 static double pressure_to_altitude(double pressure) {
     return (1.0 - pow(pressure / 1013.25, 0.1903)) * 44330.0;
 }
+#endif
 
+double calculate_altitude(double pressure, double temperature) {
+    static double fac = PRESSURE_L * PRESSURE_R / PRESSURE_M / G0;
+    return ((temperature + 273.15) / L) * (1 - pow(pressure / P0, fac /*0.190284*/));
+}
+
+// 计算两次测量之间的高度变化
+double calculate_height_difference(double pressure1, double pressure2, double temperature) {
+    static double fac = PRESSURE_L * PRESSURE_R / PRESSURE_M / G0;
+    return ((temperature + 273.15) / L) * (1 - pow(pressure2 / pressure1, fac /*0.190284*/));
+}
 
 static void dm_ekf_init(struct dm_ekf *self) {
     // 初始化 EKF，使用单位协方差矩阵
-    const double pdiag[EKF_N] = {1, 1, 1, 10};
+    const double pdiag[EKF_N] = {1, 1, 1, 10, 1};
     ekf_initialize(&self->ekf, pdiag);
 }
 
 static double distance = 0;
 static double speed = 0;
-static void dm_ekf_run_model (struct dm_ekf *self, double dt, double measured_accel, double measured_pressure) {
+static void dm_ekf_run_model (struct dm_ekf *self, double dt, double measured_accel, double measured_pressure, double measured_temp) {
     ekf_t *ekf = &self->ekf;
     
-    double measured_height = pressure_to_altitude(measured_pressure/100);
+//    double measured_height = pressure_to_altitude(measured_pressure/100);
 
     // 状态转移矩阵 F_k
     /*const*/ double F[EKF_N * EKF_N] = {
-        1, dt, 0.5 * dt * dt, 0,
-        0, 1,  dt, 0,
-        0, 0,  1, 0,
-        0, 0,  0, 1
+        1, dt, 0.5 * dt * dt, 0, 0,
+        0, 1,  dt, 0, 0, 
+        0, 0,  1, 0, 0,
+        0, 0,  0, 1, 0,
+        0, 0,  0, 0, 1
     };
 
     // 观测矩阵 H_k
     const double H[EKF_M * EKF_N] = {
         //0, 0, 0,
-        0, 0, 1, 0,
-        0, 0, 0, 1
+        0, 0, 1, 0, 0,
+        0, 0, 0, 1, 0,
+        0, 0, 0, 0, 1
     };
 
+    printf("x4:%f\n", ekf->x[4]);
     // 预测状态
     /*const*/ double fx[EKF_N] = {
         ekf->x[0] + ekf->x[1] * dt + 0.5 * ekf->x[2] * dt * dt,
         ekf->x[1] + ekf->x[2] * dt,
         ekf->x[2],
         ekf->x[3],
+        ekf->x[4]
     };
 
     if (fabs(ekf->x[1]) < 0.1 && fabs(measured_accel) < 0.09) {
@@ -101,12 +130,13 @@ static void dm_ekf_run_model (struct dm_ekf *self, double dt, double measured_ac
     }
      
     printf("speed:%f, distance:%f\n", speed, distance);
-    printf("p:%f, a:%f\n", measured_pressure, measured_accel);
+    printf("p:%f, a:%f, t:%f\n", measured_pressure, measured_accel, measured_temp);
+    printf("'p:%f, a:%f, t:%f\n", ekf->x[2], ekf->x[3], ekf->x[4]);
     // 观测值
-    const double z[EKF_M] = {measured_accel, measured_pressure};
+    const double z[EKF_M] = {measured_accel, measured_pressure, measured_temp};
 
     // 预测测量值
-    const double hx[EKF_M] = {ekf->x[2], ekf->x[3] };
+    const double hx[EKF_M] = {ekf->x[2], ekf->x[3], ekf->x[4]};
 
     printf("z:(%f,%f) vs h:(%f,%f)\n", z[0], z[1], hx[0], hx[1]);
     ekf_update(ekf, z, hx, H, R);
@@ -127,7 +157,7 @@ void process_csv(const char *filename) {
     dm_ekf_init(&self);
     
 
-    system("echo 'accel,velocity,distance,pressure0,pressure1,high,high*300' > result.csv");
+    system("echo 'accel,velocity,distance,pressure0,pressure1,temp0,temp1,high,high*300' > result.csv");
 
     char line[MAX_LINE_LENGTH];
     fgets(line, MAX_LINE_LENGTH, file); // 跳过 CSV 头部
@@ -136,14 +166,14 @@ void process_csv(const char *filename) {
     int i = 0;
     while (fgets(line, MAX_LINE_LENGTH, file)) {
 
-        double now, dt, accel, pressure, ag;
+        double now, dt, accel, pressure, temp, ag;
 
 #if 1        
-        if (sscanf(line, "%lf,%lf,%*lf,%*lf,%*lf,%lf,%*lf,%*lf,%*lf,%lf,%*lf,%lf", &now, &dt, &accel, &pressure, &ag) != 5) {
+        if (sscanf(line, "%lf,%lf,%*lf,%*lf,%*lf,%lf,%*lf,%*lf,%*lf,%lf,%lf,%lf", &now, &dt, &accel, &pressure, &temp, &ag) != 6) {
             printf("CSV 解析错误:%s\n", line);
             continue;
         }
-        if (i++ < 440) continue;
+        //if (i++ < 440) continue;
 #else
         if (sscanf(line, "%lf,%*lf,%*lf,%*lf,%lf,%*lf,%*lf,%lf", &now, &accel, &ag) != 3) {
             printf("CSV 解析错误:%s\n", line);
@@ -156,25 +186,28 @@ void process_csv(const char *filename) {
         prev_time = now;
 #endif
 
-        printf("csv now:%.3f dt: %.3f s, accel: %.3f(%.03f), pressure: %.3f Pa\n", 
-            now, dt, accel, ag, pressure);
+        printf("csv now:%.3f dt: %.3f s, accel: %.3f(%.03f), pressure: %.3f Pa, temp:%f\n", 
+            now, dt, accel, ag, pressure, temp);
         if (default_hight == 0) {
-          default_hight = pressure_to_altitude(pressure/100);
+          default_hight = calculate_altitude(pressure, temp);
           //self.ekf.x[0] = default_hight;
         }
-        printf("pressure:%f -> high:%f ----> %f\n", pressure / 100, pressure_to_altitude(pressure/100),  pressure_to_altitude(pressure/100) - default_hight);
+        printf("pressure:%f -> high:%f ----> %f\n", pressure / 100, calculate_altitude(pressure, temp),  calculate_altitude(pressure, temp) - default_hight);
 
-        dm_ekf_run_model(&self, dt, ag/*accel*/, pressure);
+        dm_ekf_run_model(&self, dt, ag/*accel*/, pressure, temp);
 
-        printf("dt: %.3f s, Height: %.3f m, Velocity: %.3f m/s, Acceleration: %.3f m/s², Pressure:%.3f\n",
+        printf("dt: %.3f s, Height: %.3f m, Velocity: %.3f m/s, Acceleration: %.3f m/s², Pressure:%.3f, Temp:%f\n",
                dt,
                self.ekf.x[0],
                self.ekf.x[1],
                self.ekf.x[2],
-               self.ekf.x[3]);
+               self.ekf.x[3],
+               self.ekf.x[4]);
         char cmd[128] = {0};
         // snprintf(cmd, sizeof(cmd), "echo %lf >> result.csv", self.ekf.x[2]);
-        snprintf(cmd, sizeof(cmd), "echo %lf,%lf,%lf,%lf,%lf,%lf,%lf >> result.csv", self.ekf.x[2],self.ekf.x[1], self.ekf.x[0], pressure,self.ekf.x[3], pressure_to_altitude(self.ekf.x[3]/100.0), pressure_to_altitude(self.ekf.x[3]/100.0) * 300);
+        snprintf(cmd, sizeof(cmd), "echo %lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf >> result.csv", self.ekf.x[2],self.ekf.x[1], self.ekf.x[0], 
+        pressure,self.ekf.x[3], temp, self.ekf.x[4],
+        calculate_altitude(self.ekf.x[3], self.ekf.x[4]), calculate_altitude(self.ekf.x[3], self.ekf.x[4]) * 300);
         system(cmd);
     }
 
