@@ -289,10 +289,10 @@ static void ekf_update_step3(ekf_t * ekf, _float_t GH[EKF_N*EKF_N])
 static bool ekf_update(
         ekf_t * ekf, 
         const _float_t z[EKF_M], 
-        const _float_t hx[EKF_N],
+        const _float_t hx[EKF_M],
         const _float_t H[EKF_M*EKF_N],
         const _float_t R[EKF_M*EKF_M])
-{        
+{
     // G_k = P_k H^T_k (H_k P_k H^T_k + R)^{-1}
     _float_t G[EKF_N*EKF_M];
     _float_t Ht[EKF_N*EKF_M];

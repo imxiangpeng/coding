@@ -10,5 +10,11 @@ target_link_libraries(tinyekf m)
 add_executable(tinyekf_pressure pressure.c)
 target_link_libraries(tinyekf_pressure m)
 
+add_executable(tinyekf_pressure_delta_accel pressure_delta_accel.c)
+target_link_libraries(tinyekf_pressure_delta_accel m)
+
+add_executable(jerk jerk_statemachine_normalize2.c)
+target_link_libraries(jerk m)
+
 
 
