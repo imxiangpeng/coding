@@ -394,7 +394,7 @@ int main(int argc, char** argv)
     if (argc > 1) {
         driver = argv[1];
     } else {
-        driver = "/dev/binder";
+        driver = "/dev/binderfs/binder";
     }
 
     bs = binder_open(driver, 128*1024);
